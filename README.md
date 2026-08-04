@@ -1,90 +1,61 @@
-# WinMTR-Official
+# WinMTR
 
-Thank you for downloading WinMTR v0.92!
+WinMTR 是適用於 Windows 10／11 的路由與網路延遲診斷工具，結合持續 ping 與 traceroute，並以台灣繁體中文呈現。程式使用原生 Win32／MFC，可建置為單一執行檔，不需要安裝額外執行階段。
 
-## About
+## 功能
 
-WinMTR is a free Microsoft Windows visual application that combines the functionality of the traceroute and ping in a single network diagnostic tool. WinMTR is Open Source Software, (barely) maintained by Dragos Manac.
+- IPv4 與 IPv6 ICMP 路由追蹤。
+- 每一跳的遺失率、已送／已收封包、最佳／平均／最差／最近延遲、抖動與標準差。
+- 主機名稱反向解析，以及每一跳的國家／地區代碼、ASN 與 ISP。
+- 可調整探測間隔、封包大小、最大跳數、逾時、循環次數、TOS、資料樣式與禁止分段（DF）。
+- 顯示目前公網 IPv4／IPv6、主機名稱、城市、地區、國家、ASN 與網路業者。
+- 顯示本機 DNS 伺服器、遞迴 DNS 的 ASN／業者／地區，以及 EDNS 用戶端子網路（ECS）狀態。
+- 複製文字／HTML，以及匯出 UTF-8 文字、HTML、CSV、JSON。
+- 主機歷程、統計重設、命令列啟動與 32／64 位元版本。
+- 主機、IP、英文、數字與程式資料使用 Consolas；一般介面使用 Microsoft JhengHei UI。
 
-It was started in 2000 by Vasile Laurentiu Stanimir as a clone for the popular Matt's Traceroute (hence MTR) Linux/UNIX utility.
+## 與 mtr 的範圍差異
 
-## License & Redistribution
+本版本以 [traviscross/mtr](https://github.com/traviscross/mtr) 的常用統計與報告能力為方向，但底層使用 Windows ICMP API。現階段支援 ICMP、IPv4／IPv6、DNS、ASN、封包參數與多種報告；尚未實作 TCP／UDP／SCTP 探測、MPLS 標籤、ECMP 路徑探索與 curses 介面。這些功能需要不同的封包引擎、管理員權限或顯著增加程式體積。
 
-WinMTR is offered as Open Source Software under GPL v2.
+## 使用方式
 
-- [Read more about the licensing conditions](http://www.gnu.org/licenses/gpl-2.0.html)
-- [Download the code](https://github.com/WinMTR/WinMTR-Official)
+1. 執行對應平台的 `WinMTR.exe`。
+2. 輸入主機名稱或 IP 位址。
+3. 視需要在「選項」調整探測參數、DNS、ASN 與公網資訊查詢。
+4. 按「開始」，再以表格或匯出報告檢視結果。
+5. 按兩下任一節點可查看該跳詳細資料。
 
-## Installation
+命令列範例：
 
-You will get a `.zip` archive containing two folders: `WinMTR-32` and `WinMTR-64`. Both contain two files: `WinMTR.exe` and `README.md`.
-
-Just extract the `WinMTR.exe` for your platform (32 or 64 bit) and click to run it. If you don't know what version you need, just click on both files and see which one works ;-)
-
-As you can see, WinMTR requires no other installation effort.
-
-**Tip:** You can copy `WinMTR.exe` to `Windows/System32` so it's accessible via the command line (cmd).
-
-## Usage
-
-### Visual
-
-1. Start WinMTR
-2. Write the name or IP of the host (e.g. `github.com`)
-3. Press the **Options** button to configure ping size, maximum hops and ping interval (the defaults are OK)
-4. Push the **Start** button and wait
-5. Copy or export the results in text or HTML format — useful if you want to document or file a complaint with your ISP
-6. Click on **Clear History** to remove the hosts you have previously traced
-
-### Command Line
-```
-winmtr --help        # See available options
-winmtr github.com    # Trace a host
+```text
+WinMTR.exe github.com
+WinMTR.exe --numeric 1.1.1.1
+WinMTR.exe --interval 0.5 --size 64 example.com
+WinMTR.exe --maxLRU 64
+WinMTR.exe --help
 ```
 
-## Troubleshooting
+## 隱私與資料來源
 
-**I type in the address and nothing happens.**
-Usually this has to do with antivirus or firewall applications. Disable them when debugging or using WinMTR, or configure them properly.
+「啟動時查詢目前公網 IP、地區與業者」預設開啟，可在選項中關閉。啟用時會連線至 ipify 與 ipapi；ASN／ISP 功能會透過 DNS 查詢 Team Cymru，遞迴 DNS／ECS 診斷會查詢 Akamai。這些服務會看到必要的查詢來源資訊，且其可用性與使用限制由各服務提供者決定。
 
-**I get an error saying the program cannot be executed.**
-You are running the 64-bit version on a 32-bit platform. Try the `WinMTR.exe` in the `WinMTR_x32` folder.
+所有端點、預設開關、品牌與字型都可在 [`WinMTRCustomization.h`](WinMTRCustomization.h) 修改。完整字串與自訂位置索引請見 [`CUSTOMIZATION.md`](CUSTOMIZATION.md)。
 
-**I get an error not listed here.**
-Please report it to us to make sure it's not a bug in the application.
+## 建置
 
-## Changelog
+需求：Visual Studio 2022 Build Tools、MSVC v143、Windows 10 SDK，以及 MFC C++ 元件。
 
-| Date | Version | Changes |
-|------|---------|---------|
-| 2025-11-26 | — | Homepage moved to WinMTR.net and development repository to GitHub. Still looking for developers. |
-| 2011-01-31 | v0.92 | Fixed reporting errors for very slow connections |
-| 2011-01-11 | v0.91 | Released under GPL v2 by popular request |
-| 2010-12-24 | v0.9 | Support for 32 and 64 bit OS. Works on Windows 7 as regular user. Various bug fixes. |
-| 2002-01-20 | — | Last entered hosts and options now stored in registry. Moved to SourceForge. |
-| 2001-09-05 | v0.7 | Combo box for host history. Fixed memory leak causing crashes. |
-| 2000-11-27 | v0.6 | Added resizing support and flat buttons |
-| 2000-11-26 | v0.5 | Copy to clipboard, save as text/HTML |
-| 2000-08-03 | v0.4 | Double-click host for detailed info |
-| 2000-08-02 | v0.3 | Fixed ICMP error codes handling |
-| 2000-08-01 | v0.2 | Full command-line support |
-| 2000-07-28 | v0.1 | First release |
+```powershell
+msbuild WinMTR.sln /m /t:Rebuild /p:Configuration=Release /p:Platform=x64
+msbuild WinMTR.sln /m /t:Rebuild /p:Configuration=Release /p:Platform=Win32
+```
 
-## Bug Reports
+輸出位置：
 
-Let us know if you identify bugs. Please include:
+- `Release_x64/WinMTR.exe`
+- `Release_x32/WinMTR.exe`
 
-- WinMTR version
-- Operating System and setup details
+## 授權
 
-Before submitting, make sure it's not related to your specific configuration (antivirus, firewalls, etc.).
-
-## Feature Requests
-
-If you need functionality that others could also benefit from, let us know. We'll try to integrate it in future releases.
-
-If you're a developer planning to extend the code, please reach out so we can integrate it into the official tree.
-
-## Contact
-
-Email: contact AT winmtr DOT net
+本專案依 GNU General Public License v2 授權。WinMTR 最初由 Vasile Laurentiu Stanimir 開發，後續由 Dragos Manac、Appnor MSP 與社群維護。

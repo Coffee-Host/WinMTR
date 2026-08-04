@@ -29,9 +29,9 @@ public:
 	
 	enum { IDD = IDD_DIALOG_PROPERTIES };
 
-	char	host[255];
-	char	ip[16];
-	char	comment[255];
+	char	host[NI_MAXHOST];
+	char	ip[INET6_ADDRSTRLEN];
+	char	comment[512];
 
 	float	ping_last;
 	float	ping_best;
@@ -52,6 +52,7 @@ public:
 			m_editBest,
 			m_editWorst,
 			m_editAvrg;
+	CFont  m_codeFont;
 	
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);

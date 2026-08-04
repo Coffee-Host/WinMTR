@@ -1,93 +1,109 @@
-//*****************************************************************************
-// FILE:            WinMTRNet.h
-//
-//
-// DESCRIPTION:
-//   
-//
-// NOTES:
-//    
-//
-//*****************************************************************************
-
 #ifndef WINMTRNET_H_
 #define WINMTRNET_H_
 
+#include <atomic>
+#include <mutex>
+#include <stdint.h>
+#include <string>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
-class WinMTRDialog;
+struct TraceConfig {
+    int intervalMs;
+    int pingSize;
+    int maxHops;
+    int timeoutMs;
+    int cycles;
+    int tos;
+    int bitPattern;
+    bool useDns;
+    bool lookupAsn;
+    bool dontFragment;
 
-typedef ip_option_information IPINFO, *PIPINFO, FAR *LPIPINFO;
-
-#ifdef _WIN64
-typedef icmp_echo_reply32 ICMPECHO, *PICMPECHO, FAR *LPICMPECHO;
-#else
-typedef icmp_echo_reply ICMPECHO, *PICMPECHO, FAR *LPICMPECHO;
-#endif
-
-#define ECHO_REPLY_TIMEOUT 5000
-
-struct s_nethost {
-  __int32 addr;		// IP as a decimal, big endian
-  int xmit;			// number of PING packets sent
-  int returned;		// number of ICMP echo replies received
-  unsigned long total;	// total time
-  int last;				// last time
-  int best;				// best time
-  int worst;			// worst time
-  char name[255];
+    TraceConfig();
 };
 
-//*****************************************************************************
-// CLASS:  WinMTRNet
-//
-//
-//*****************************************************************************
+struct HopSnapshot {
+    bool hasAddress;
+    std::string address;
+    std::string name;
+    std::string country;
+    std::string asn;
+    std::string isp;
+    int xmit;
+    int returned;
+    int lossPercent;
+    int best;
+    int average;
+    int worst;
+    int last;
+    int jitter;
+    int standardDeviation;
+
+    HopSnapshot();
+};
 
 class WinMTRNet {
-	typedef HANDLE (WINAPI *LPFNICMPCREATEFILE)(VOID);
-	typedef BOOL  (WINAPI *LPFNICMPCLOSEHANDLE)(HANDLE);
-	typedef DWORD (WINAPI *LPFNICMPSENDECHO)(HANDLE, u_long, LPVOID, WORD, LPVOID, LPVOID, DWORD, DWORD);
-
 public:
+    WinMTRNet();
+    ~WinMTRNet();
 
-	WinMTRNet(WinMTRDialog *wp);
-	~WinMTRNet();
-	void	DoTrace(int address);
-	void	ResetHops();
-	void	StopTrace();
+    void DoTrace(const sockaddr_storage& address, const TraceConfig& config);
+    void ResetHops();
+    void StopTrace();
+    bool IsTracing() const;
 
-	int		GetAddr(int at);
-	int		GetName(int at, char *n);
-	int		GetBest(int at);
-	int		GetWorst(int at);
-	int		GetAvg(int at);
-	int		GetPercent(int at);
-	int		GetLast(int at);
-	int		GetReturned(int at);
-	int		GetXmit(int at);
-	int		GetMax();
+    HopSnapshot GetHopSnapshot(int at) const;
+    int GetMax() const;
+    bool WaitForStop(DWORD timeoutMs) const;
 
-	void	SetAddr(int at, __int32 addr);
-	void	SetName(int at, char *n);
-	void	SetBest(int at, int current);
-	void	SetWorst(int at, int current);
-	void	SetLast(int at, int last);
-	void	AddReturned(int at);
-	void	AddXmit(int at);
+    // Worker entry points. Callers outside WinMTRNet should not use these.
+    bool SetAddress(int at, const sockaddr_storage& address);
+    void SetIdentity(int at, const std::string& name, const std::string& country,
+        const std::string& asn, const std::string& isp);
+    void RecordSent(int at);
+    void RecordReply(int at, int roundTripTime);
+    bool ShouldProbeHop(int ttl) const;
 
-	WinMTRDialog		*wmtrdlg;
-	__int32				last_remote_addr;
-	bool				tracing;
-	bool				initialized;
-    HANDLE				hICMP;
-	LPFNICMPCREATEFILE	lpfnIcmpCreateFile;
-	LPFNICMPCLOSEHANDLE lpfnIcmpCloseHandle;
-	LPFNICMPSENDECHO	lpfnIcmpSendEcho;
+    // Compatibility accessors used by the existing dialogs and exporters.
+    int GetAddr(int at) const;
+    int GetName(int at, char* name) const;
+    int GetBest(int at) const;
+    int GetWorst(int at) const;
+    int GetAvg(int at) const;
+    int GetPercent(int at) const;
+    int GetLast(int at) const;
+    int GetReturned(int at) const;
+    int GetXmit(int at) const;
+
 private:
-	HINSTANCE			hICMP_DLL;
+    struct NetHost {
+        bool hasAddress;
+        sockaddr_storage address;
+        uint64_t total;
+        uint64_t totalSquares;
+        uint64_t jitterTotal;
+        int xmit;
+        int returned;
+        int last;
+        int best;
+        int worst;
+        int lastJitter;
+        char name[NI_MAXHOST];
+        char country[8];
+        char asn[24];
+        char isp[192];
+    };
 
-    struct s_nethost	host[MaxHost];
-	HANDLE				ghMutex; 
+    bool SameAddress(const sockaddr_storage& left, const sockaddr_storage& right) const;
+
+    mutable std::mutex hostMutex;
+    NetHost host[64];
+    sockaddr_storage remoteAddress;
+    int configuredMaxHops;
+    std::atomic<int> destinationHop;
+    std::atomic<bool> tracing;
+    HANDLE stopEvent;
 };
 
-#endif	// ifndef WINMTRNET_H_
+#endif // WINMTRNET_H_

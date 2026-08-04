@@ -1,132 +1,130 @@
-//*****************************************************************************
-// FILE:            WinMTRDialog.h
-//
-//
-// DESCRIPTION:
-//   
-//
-// NOTES:
-//    
-//
-//*****************************************************************************
-
 #ifndef WINMTRDIALOG_H_
 #define WINMTRDIALOG_H_
 
 #define WINMTR_DIALOG_TIMER 100
+#define WM_PUBLIC_NETWORK_INFO (WM_APP + 101)
 
 #include "WinMTRStatusBar.h"
 #include "WinMTRNet.h"
+#include "WinMTRNetworkInfo.h"
 
-//*****************************************************************************
-// CLASS:  WinMTRDialog
-//
-//
-//*****************************************************************************
+#include <string>
 
 class WinMTRDialog : public CDialog
 {
 public:
-	WinMTRDialog(CWnd* pParent = NULL);
-	~WinMTRDialog();
+    WinMTRDialog(CWnd* pParent = NULL);
+    ~WinMTRDialog();
 
-	enum { IDD = IDD_WINMTR_DIALOG };
+    enum { IDD = IDD_WINMTR_DIALOG };
+    enum STATES { IDLE, TRACING, STOPPING, EXIT };
+    enum STATE_TRANSITIONS {
+        IDLE_TO_IDLE,
+        IDLE_TO_TRACING,
+        IDLE_TO_EXIT,
+        TRACING_TO_TRACING,
+        TRACING_TO_STOPPING,
+        TRACING_TO_EXIT,
+        STOPPING_TO_IDLE,
+        STOPPING_TO_STOPPING,
+        STOPPING_TO_EXIT
+    };
 
-	afx_msg BOOL InitRegistry();
-
-	WinMTRStatusBar	statusBar;
-
-	enum STATES {
-		IDLE,
-		TRACING,
-		STOPPING,
-		EXIT
-	};
-
-	enum STATE_TRANSITIONS {
-		IDLE_TO_IDLE,
-		IDLE_TO_TRACING,
-		IDLE_TO_EXIT,
-		TRACING_TO_TRACING,
-		TRACING_TO_STOPPING,
-		TRACING_TO_EXIT,
-		STOPPING_TO_IDLE,
-		STOPPING_TO_STOPPING,
-		STOPPING_TO_EXIT
-	};
-
-	CButton	m_buttonOptions;
-	CButton	m_buttonExit;
-	CButton	m_buttonStart;
-	CComboBox m_comboHost;
-	CListCtrl	m_listMTR;
-
-	CStatic	m_staticS;
-	CStatic	m_staticJ;
-
-	CButton	m_buttonExpT;
-	CButton	m_buttonExpH;
-	
-	int InitMTRNet();
-
-	int DisplayRedraw();
-	void Transit(STATES new_state);
-
-	STATES				state;
-	STATE_TRANSITIONS	transition;
-	HANDLE				traceThreadMutex; 
-	double				interval;
-	bool				hasIntervalFromCmdLine;
-	int					pingsize;
-	bool				hasPingsizeFromCmdLine;
-	int					maxLRU;
-	bool				hasMaxLRUFromCmdLine;
-	int					nrLRU;
-	BOOL				useDNS;
-	bool				hasUseDNSFromCmdLine;
-	WinMTRNet*			wmtrnet;
-
-	void SetHostName(const char *host);
-	void SetInterval(float i);
-	void SetPingSize(int ps);
-	void SetMaxLRU(int mlru);
-	void SetUseDNS(BOOL udns);
+    void SetHostName(const char* host);
+    void SetInterval(float value);
+    void SetPingSize(int value);
+    void SetMaxLRU(int value);
+    void SetUseDNS(BOOL value);
 
 protected:
-	virtual void DoDataExchange(CDataExchange* pDX);
+    virtual void DoDataExchange(CDataExchange* pDX);
+    virtual BOOL OnInitDialog();
+    virtual void OnCancel();
 
-	int m_autostart;
-	char msz_defaulthostname[1000];
-	
-	HICON m_hIcon;
+    afx_msg void OnPaint();
+    afx_msg void OnSize(UINT type, int width, int height);
+    afx_msg void OnSizing(UINT side, LPRECT rectangle);
+    afx_msg HCURSOR OnQueryDragIcon();
+    afx_msg void OnRestart();
+    afx_msg void OnOptions();
+    afx_msg void OnCTTC();
+    afx_msg void OnCHTC();
+    afx_msg void OnEXPT();
+    afx_msg void OnEXPH();
+    afx_msg void OnEXPC();
+    afx_msg void OnEXPJ();
+    afx_msg void OnResetStats();
+    afx_msg void OnNetworkInfo();
+    afx_msg void OnDblclkList(NMHDR* header, LRESULT* result);
+    afx_msg void OnCbnSelchangeComboHost();
+    afx_msg void OnCbnSelendokComboHost();
+    afx_msg void OnCbnCloseupComboHost();
+    afx_msg void OnTimer(UINT_PTR eventId);
+    afx_msg void OnClose();
+    afx_msg void OnBnClickedCancel();
+    afx_msg LRESULT OnPublicNetworkInfoReady(WPARAM, LPARAM value);
+    DECLARE_MESSAGE_MAP()
 
-	virtual BOOL OnInitDialog();
-	afx_msg void OnPaint();
-	afx_msg void OnSize(UINT, int, int);
-	afx_msg void OnSizing(UINT, LPRECT); 
-	afx_msg HCURSOR OnQueryDragIcon();
-	afx_msg void OnRestart();
-	afx_msg void OnOptions();
-	virtual void OnCancel();
-
-	afx_msg void OnCTTC();
-	afx_msg void OnCHTC();
-	afx_msg void OnEXPT();
-	afx_msg void OnEXPH();
-
-	afx_msg void OnDblclkList(NMHDR* pNMHDR, LRESULT* pResult);
-	
-	DECLARE_MESSAGE_MAP()
-public:
-	afx_msg void OnCbnSelchangeComboHost();
-	afx_msg void OnCbnSelendokComboHost();
 private:
-	void ClearHistory();
-public:
-	afx_msg void OnCbnCloseupComboHost();
-	afx_msg void OnTimer(UINT_PTR nIDEvent);
-	afx_msg void OnClose();
-	afx_msg void OnBnClickedCancel();
+    BOOL InitRegistry();
+    int ResolveTraceTarget();
+    int DisplayRedraw();
+    void Transit(STATES newState);
+    void ClearHistory();
+    void StartPublicInfoLookup();
+    void SaveConfiguration();
+    TraceConfig CurrentTraceConfig() const;
+    CString LoadText(UINT id) const;
+    CString Utf8ToLocal(const std::string& value) const;
+    void CopyTextToClipboard(const std::string& text) const;
+    void SaveReport(const std::string& text, LPCTSTR extension, LPCTSTR filter) const;
+    std::string BuildTextReport() const;
+    std::string BuildHtmlReport() const;
+    std::string BuildCsvReport() const;
+    std::string BuildJsonReport() const;
+
+    WinMTRStatusBar statusBar;
+    CButton m_buttonOptions;
+    CButton m_buttonExit;
+    CButton m_buttonStart;
+    CButton m_buttonNetworkInfo;
+    CButton m_buttonReset;
+    CComboBox m_comboHost;
+    CListCtrl m_listMTR;
+    CStatic m_staticS;
+    CStatic m_staticJ;
+    CButton m_buttonExpT;
+    CButton m_buttonExpH;
+    CFont m_codeFont;
+
+    STATES state;
+    STATE_TRANSITIONS transition;
+    HANDLE traceThread;
+    HANDLE publicInfoThread;
+    sockaddr_storage traceTarget;
+    double interval;
+    int pingSize;
+    int maxLRU;
+    int nrLRU;
+    int maxHops;
+    int timeoutMs;
+    int cycles;
+    int tos;
+    int bitPattern;
+    BOOL useDNS;
+    BOOL dontFragment;
+    BOOL lookupAsn;
+    BOOL lookupPublicInfo;
+    bool hasIntervalFromCmdLine;
+    bool hasPingSizeFromCmdLine;
+    bool hasMaxLRUFromCmdLine;
+    bool hasUseDNSFromCmdLine;
+    bool publicInfoQueryStarted;
+    int m_autostart;
+    char defaultHostName[1000];
+    HICON m_hIcon;
+    WinMTRNet* network;
+    PublicNetworkInfo* publicNetworkInfo;
 };
 
-#endif // ifndef WINMTRDIALOG_H_
+#endif // WINMTRDIALOG_H_

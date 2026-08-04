@@ -13,11 +13,11 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// English (United States) resources
+// Chinese (Traditional, Taiwan) resources
 
-#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
-LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
-#pragma code_page(1252)
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHT)
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL
+#pragma code_page(65001)
 
 #ifdef APSTUDIO_INVOKED
 /////////////////////////////////////////////////////////////////////////////
@@ -70,80 +70,93 @@ IDR_MAINFRAME           ICON                    "WinMTR.ico"
 // Dialog
 //
 
-IDD_WINMTR_DIALOG DIALOGEX 0, 0, 390, 193
+IDD_WINMTR_DIALOG DIALOGEX 0, 0, 560, 260
 STYLE DS_SETFONT | DS_3DLOOK | DS_CENTER | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 EXSTYLE WS_EX_APPWINDOW
-FONT 8, "MS Sans Serif", 0, 0, 0x1
+FONT 9, "Microsoft JhengHei UI", 0, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "&Start",ID_RESTART,203,12,50,14,BS_FLAT
-    PUSHBUTTON      "&Options",ID_OPTIONS,270,12,51,14,BS_FLAT
-    PUSHBUTTON      "E&xit",IDCANCEL,328,12,49,14,BS_FLAT
-    PUSHBUTTON      "&Copy Text to clipboard",ID_CTTC,14,39,89,14,BS_FLAT
-    PUSHBUTTON      "Co&py HTML to clipboard",ID_CHTC,113,39,89,14,BS_FLAT
-    PUSHBUTTON      "Export &TEXT",ID_EXPT,270,39,51,14,BS_FLAT
-    PUSHBUTTON      "Export &HTML",ID_EXPH,328,39,49,14,BS_FLAT
-    CONTROL         "List1",IDC_LIST_MTR,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,60,376,126
-    LTEXT           "Host:",IDC_STATIC,13,12,20,13,SS_CENTERIMAGE
-    GROUPBOX        "",IDC_STATIC,7,3,251,29,BS_FLAT
-    GROUPBOX        "",IDC_STATICS,263,3,120,29,BS_FLAT
-    GROUPBOX        "",IDC_STATICJ,7,31,376,26,BS_FLAT
-    COMBOBOX        IDC_COMBO_HOST,35,12,164,73,CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "主機：",IDC_STATIC,14,13,28,12,SS_CENTERIMAGE
+    COMBOBOX        IDC_COMBO_HOST,43,11,210,90,CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "開始(&S)",ID_RESTART,260,11,60,16,BS_FLAT
+    PUSHBUTTON      "選項(&O)",ID_OPTIONS,326,11,60,16,BS_FLAT
+    PUSHBUTTON      "網路資訊",ID_NETWORK_INFO,392,11,76,16,BS_FLAT
+    PUSHBUTTON      "離開(&X)",IDCANCEL,475,11,70,16,BS_FLAT
+    PUSHBUTTON      "複製文字",ID_CTTC,14,39,75,16,BS_FLAT
+    PUSHBUTTON      "複製 HTML",ID_CHTC,95,39,80,16,BS_FLAT
+    PUSHBUTTON      "重設統計",ID_RESET_STATS,181,39,70,16,BS_FLAT
+    PUSHBUTTON      "匯出文字",ID_EXPT,284,39,62,16,BS_FLAT
+    PUSHBUTTON      "匯出 HTML",ID_EXPH,351,39,62,16,BS_FLAT
+    PUSHBUTTON      "匯出 CSV",ID_EXPC,418,39,62,16,BS_FLAT
+    PUSHBUTTON      "匯出 JSON",ID_EXPJ,485,39,62,16,BS_FLAT
+    CONTROL         "",IDC_LIST_MTR,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,7,63,546,190
+    GROUPBOX        "",IDC_STATIC,7,3,246,30,BS_FLAT
+    GROUPBOX        "",IDC_STATICS,257,3,296,30,BS_FLAT
+    GROUPBOX        "",IDC_STATICJ,7,31,546,28,BS_FLAT
 END
 
-IDD_DIALOG_OPTIONS DIALOGEX 0, 0, 251, 164
+IDD_DIALOG_OPTIONS DIALOGEX 0, 0, 360, 220
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Options"
-FONT 8, "MS Sans Serif", 0, 0, 0x0
+CAPTION "追蹤選項"
+FONT 9, "Microsoft JhengHei UI", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "&OK",IDOK,53,143,50,14,BS_FLAT
-    PUSHBUTTON      "&Cancel",IDCANCEL,141,143,50,14,BS_FLAT
-    GROUPBOX        "",IDC_STATIC,7,91,237,46,BS_FLAT
-    ICON            IDR_MAINFRAME,IDC_STATIC,15,12,20,20
-    LTEXT           "Interval (sec):",IDC_STATIC,15,102,45,10,NOT WS_GROUP
-    EDITTEXT        IDC_EDIT_INTERVAL,71,99,34,13,ES_AUTOHSCROLL
-    LTEXT           "Ping size (bytes):",IDC_STATIC,139,102,53,10,NOT WS_GROUP
-    EDITTEXT        IDC_EDIT_SIZE,196,99,34,13,ES_AUTOHSCROLL | ES_NUMBER
-    CONTROL         "Resolve names",IDC_CHECK_DNS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,167,119,63,8
-    GROUPBOX        "",IDC_STATIC,7,7,237,82,BS_FLAT
-    CTEXT           "Get Fully Managed Dedicated and Cloud hosting in Europe and USA at killer prices.",IDC_STATIC,31,35,201,17
-    CTEXT           "WinMTR v0.92 is offered under GPL V2 by Appnor MSP",IDC_STATIC,42,14,194,17
-    PUSHBUTTON      "&License and Credits",ID_LICENSE,81,67,94,14,BS_FLAT
-    LTEXT           "Max. hosts in LRU list:",IDC_STATIC,15,119,74,10,NOT WS_GROUP
-    EDITTEXT        IDC_EDIT_MAX_LRU,90,116,34,13,ES_AUTOHSCROLL
-    CONTROL         "www.appnor.com",IDC_MFCLINK1,"MfcLink",WS_TABSTOP,102,51,60,11
+    GROUPBOX        "探測設定",IDC_STATIC,8,7,344,126
+    LTEXT           "間隔（秒）：",IDC_STATIC,18,24,58,10
+    EDITTEXT        IDC_EDIT_INTERVAL,82,21,42,14,ES_AUTOHSCROLL
+    LTEXT           "封包資料（位元組）：",IDC_STATIC,183,24,82,10
+    EDITTEXT        IDC_EDIT_SIZE,274,21,50,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "最大跳數：",IDC_STATIC,18,48,58,10
+    EDITTEXT        IDC_EDIT_MAX_HOPS,82,45,42,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "逾時（毫秒）：",IDC_STATIC,183,48,72,10
+    EDITTEXT        IDC_EDIT_TIMEOUT,274,45,50,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "循環次數（0 為不限）：",IDC_STATIC,18,72,94,10
+    EDITTEXT        IDC_EDIT_CYCLES,115,69,42,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "TOS（0–255）：",IDC_STATIC,183,72,72,10
+    EDITTEXT        IDC_EDIT_TOS,274,69,50,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "資料樣式（-1 為隨機）：",IDC_STATIC,18,96,100,10
+    EDITTEXT        IDC_EDIT_PATTERN,120,93,42,14,ES_AUTOHSCROLL
+    LTEXT           "歷程主機上限：",IDC_STATIC,183,96,72,10
+    EDITTEXT        IDC_EDIT_MAX_LRU,274,93,50,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "解析主機名稱",IDC_CHECK_DNS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,115,78,10
+    CONTROL         "查詢 ASN／ISP",IDC_CHECK_ASN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,113,115,80,10
+    CONTROL         "禁止分段（DF）",IDC_CHECK_DF,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,207,115,80,10
+    GROUPBOX        "隱私與其他",IDC_STATIC,8,139,344,42
+    CONTROL         "啟動時查詢目前公網 IP、地區與業者",IDC_CHECK_PUBLIC_INFO,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,18,153,190,11
+    PUSHBUTTON      "授權與貢獻者",ID_LICENSE,244,151,95,16,BS_FLAT
+    DEFPUSHBUTTON   "確定",IDOK,111,193,60,17,BS_FLAT
+    PUSHBUTTON      "取消",IDCANCEL,189,193,60,17,BS_FLAT
 END
 
 IDD_DIALOG_LICENSE DIALOGEX 0, 0, 175, 70
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "License & Credits"
-FONT 8, "MS Sans Serif", 0, 0, 0x0
+CAPTION "授權與貢獻者"
+FONT 9, "Microsoft JhengHei UI", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,59,43,50,14
-    LTEXT           "Read more on",IDC_STATIC,36,27,46,8
+    DEFPUSHBUTTON   "確定",IDOK,59,43,50,14
+    LTEXT           "更多資訊：",IDC_STATIC,30,27,52,8
     CONTROL         "www.winmtr.net",IDC_MFCLINK1,"MfcLink",WS_TABSTOP,83,26,60,14
-    LTEXT           "WinMTR is licensed under GPL V2.",IDC_STATIC,33,14,113,8
+    LTEXT           "WinMTR 採用 GNU GPL v2 授權。",IDC_STATIC,25,14,132,8
 END
 
 IDD_DIALOG_PROPERTIES DIALOG 0, 0, 201, 159
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Host properties"
-FONT 8, "MS Sans Serif"
+CAPTION "節點詳細資料"
+FONT 9, "Microsoft JhengHei UI"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,71,138,50,14,BS_FLAT
-    LTEXT           "Name:",IDC_STATIC,15,18,24,8
+    DEFPUSHBUTTON   "確定",IDOK,71,138,50,14,BS_FLAT
+    LTEXT           "名稱：",IDC_STATIC,15,18,28,8
     EDITTEXT        IDC_EDIT_PHOST,48,16,136,12,ES_RIGHT | ES_AUTOHSCROLL | ES_READONLY
-    LTEXT           "IP Address:",IDC_STATIC,14,32,40,9
+    LTEXT           "IP 位址：",IDC_STATIC,14,32,40,9
     EDITTEXT        IDC_EDIT_PIP,58,31,126,12,ES_RIGHT | ES_AUTOHSCROLL | ES_READONLY
-    GROUPBOX        "Packets",IDC_STATIC,7,74,89,60,BS_FLAT
-    GROUPBOX        "Ping time",IDC_STATIC,108,74,86,60,BS_FLAT
-    GROUPBOX        "Host",IDC_STATIC,7,7,187,62,BS_FLAT
-    LTEXT           "Loss (%):",IDC_STATIC,13,117,31,9
-    LTEXT           "Received:",IDC_STATIC,13,101,36,9
-    LTEXT           "Sent:",IDC_STATIC,13,85,21,9
-    LTEXT           "Last:",IDC_STATIC,114,84,18,9
-    LTEXT           "Best:",IDC_STATIC,114,96,20,8
-    LTEXT           "Average:",IDC_STATIC,114,107,32,8
-    LTEXT           "Worst:",IDC_STATIC,114,118,23,8
+    GROUPBOX        "封包",IDC_STATIC,7,74,89,60,BS_FLAT
+    GROUPBOX        "延遲時間",IDC_STATIC,108,74,86,60,BS_FLAT
+    GROUPBOX        "主機",IDC_STATIC,7,7,187,62,BS_FLAT
+    LTEXT           "遺失率：",IDC_STATIC,13,117,31,9
+    LTEXT           "已接收：",IDC_STATIC,13,101,36,9
+    LTEXT           "已送出：",IDC_STATIC,13,85,36,9
+    LTEXT           "最近：",IDC_STATIC,114,84,26,9
+    LTEXT           "最佳：",IDC_STATIC,114,96,26,8
+    LTEXT           "平均：",IDC_STATIC,114,107,26,8
+    LTEXT           "最差：",IDC_STATIC,114,118,26,8
     EDITTEXT        IDC_EDIT_PSENT,53,82,35,12,ES_RIGHT | ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
     EDITTEXT        IDC_EDIT_PRECV,53,99,35,12,ES_RIGHT | ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
     EDITTEXT        IDC_EDIT_PLOSS,53,116,35,12,ES_RIGHT | ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
@@ -154,21 +167,29 @@ BEGIN
     EDITTEXT        IDC_EDIT_PCOMMENT,14,50,170,12,ES_AUTOHSCROLL | ES_READONLY
 END
 
-IDD_DIALOG_HELP DIALOGEX 0, 0, 256, 122
+IDD_DIALOG_HELP DIALOGEX 0, 0, 330, 150
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "WinMTR"
-FONT 8, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Microsoft JhengHei UI", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,144,101,50,14
-    CONTROL         "www.appnor.com",IDC_MFCLINK1,"MfcLink",WS_TABSTOP,187,8,60,11
-    LTEXT           "WinMTR v0.92 is offered under GPL V2 by Appnor MSP",IDC_STATIC,7,9,176,10
-    LTEXT           "Usage: WinMTR [options] target_host_name",IDC_STATIC,7,29,144,8
-    LTEXT           "Options:",IDC_STATIC,7,39,28,8
-    LTEXT           "     --interval, -i VALUE. Set ping interval.",IDC_STATIC,26,47,131,8
-    LTEXT           "     --size, -s VALUE. Set ping size.",IDC_STATIC,26,57,109,8
-    LTEXT           "     --maxLRU, -m VALUE. Set max hosts in LRU list.",IDC_STATIC,26,67,163,8
-    LTEXT           "     --help, -h. Print this help.",IDC_STATIC,26,89,92,8
-    LTEXT           "     --numeric, -n. Do not resolve names.",IDC_STATIC,26,78,129,8
+    DEFPUSHBUTTON   "確定",IDOK,140,127,50,16
+    LTEXT           "WinMTR v1.00－路由與延遲診斷工具",IDC_STATIC,12,10,200,10
+    LTEXT           "用法：WinMTR [選項] 目標主機",IDC_STATIC,12,29,190,9
+    LTEXT           "--interval, -i 秒數     設定探測間隔",IDC_STATIC,26,48,190,9
+    LTEXT           "--size, -s 位元組       設定探測資料大小",IDC_STATIC,26,61,190,9
+    LTEXT           "--maxLRU, -m 數量       設定歷程主機上限",IDC_STATIC,26,74,190,9
+    LTEXT           "--numeric, -n           不解析主機名稱",IDC_STATIC,26,87,190,9
+    LTEXT           "--help, -h              顯示本說明",IDC_STATIC,26,100,190,9
+END
+
+IDD_DIALOG_NETWORK_INFO DIALOGEX 0, 0, 390, 300
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "目前網路資訊"
+FONT 9, "Microsoft JhengHei UI", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_EDIT_NETWORK_INFO,8,8,374,255,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+    PUSHBUTTON      "複製",ID_COPY_NETWORK_INFO,122,270,60,17,BS_FLAT
+    DEFPUSHBUTTON   "關閉",IDOK,207,270,60,17,BS_FLAT
 END
 
 
@@ -178,8 +199,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,9,0,2
- PRODUCTVERSION 0,9,0,2
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -192,20 +213,20 @@ VS_VERSION_INFO VERSIONINFO
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
-        BLOCK "040904b0"
+        BLOCK "040404b0"
         BEGIN
-            VALUE "FileDescription", "WinMTR by Appnor MSP - www.winmtr.net"
-            VALUE "FileVersion", "0.9.0.2"
+            VALUE "FileDescription", "WinMTR 路由與延遲診斷工具"
+            VALUE "FileVersion", "1.00"
             VALUE "InternalName", "WinMTR"
-            VALUE "LegalCopyright", "WinMTR 0.9 (c) 2010-2011 Appnor MSP - Fully Managed Hosting & Cloud Provider www.appnor.com"
+            VALUE "LegalCopyright", "WinMTR (c) 2010-2011 Appnor MSP"
             VALUE "OriginalFilename", "WinMTR.EXE"
-            VALUE "ProductName", "WinMTR Application"
-            VALUE "ProductVersion", "0.9.0.2"
+            VALUE "ProductName", "WinMTR"
+            VALUE "ProductVersion", "1.00"
         END
     END
     BLOCK "VarFileInfo"
     BEGIN
-        VALUE "Translation", 0x409, 1200
+        VALUE "Translation", 0x404, 1200
     END
 END
 
@@ -273,46 +294,6 @@ END
 // Dialog Info
 //
 
-IDD_DIALOG_HELP DLGINIT
-BEGIN
-    IDC_MFCLINK1, 0x37c, 238, 0
-0x4d3c, 0x4346, 0x694c, 0x6b6e, 0x555f, 0x6c72, 0x683e, 0x7474, 0x3a70, 
-0x2f2f, 0x7777, 0x2e77, 0x7061, 0x6e70, 0x726f, 0x632e, 0x6d6f, 0x3f2f, 
-0x7475, 0x5f6d, 0x6f73, 0x7275, 0x6563, 0x773d, 0x6e69, 0x746d, 0x2672, 
-0x7475, 0x5f6d, 0x656d, 0x6964, 0x6d75, 0x643d, 0x7365, 0x746b, 0x706f, 
-0x7526, 0x6d74, 0x635f, 0x6d61, 0x6170, 0x6769, 0x3d6e, 0x6f73, 0x7466, 
-0x6177, 0x6572, 0x2f3c, 0x464d, 0x4c43, 0x6e69, 0x5f6b, 0x7255, 0x3e6c, 
-0x4d3c, 0x4346, 0x694c, 0x6b6e, 0x555f, 0x6c72, 0x7250, 0x6665, 0x7869, 
-0x3c3e, 0x4d2f, 0x4346, 0x694c, 0x6b6e, 0x555f, 0x6c72, 0x7250, 0x6665, 
-0x7869, 0x3c3e, 0x464d, 0x4c43, 0x6e69, 0x5f6b, 0x6f54, 0x6c6f, 0x6974, 
-0x3e70, 0x2f3c, 0x464d, 0x4c43, 0x6e69, 0x5f6b, 0x6f54, 0x6c6f, 0x6974, 
-0x3e70, 0x4d3c, 0x4346, 0x694c, 0x6b6e, 0x465f, 0x6c75, 0x546c, 0x7865, 
-0x5474, 0x6f6f, 0x746c, 0x7069, 0x463e, 0x4c41, 0x4553, 0x2f3c, 0x464d, 
-0x4c43, 0x6e69, 0x5f6b, 0x7546, 0x6c6c, 0x6554, 0x7478, 0x6f54, 0x6c6f, 
-0x6974, 0x3e70, 
-    0
-END
-
-IDD_DIALOG_OPTIONS DLGINIT
-BEGIN
-    IDC_MFCLINK1, 0x37c, 238, 0
-0x4d3c, 0x4346, 0x694c, 0x6b6e, 0x555f, 0x6c72, 0x683e, 0x7474, 0x3a70, 
-0x2f2f, 0x7777, 0x2e77, 0x7061, 0x6e70, 0x726f, 0x632e, 0x6d6f, 0x3f2f, 
-0x7475, 0x5f6d, 0x6f73, 0x7275, 0x6563, 0x773d, 0x6e69, 0x746d, 0x2672, 
-0x7475, 0x5f6d, 0x656d, 0x6964, 0x6d75, 0x643d, 0x7365, 0x746b, 0x706f, 
-0x7526, 0x6d74, 0x635f, 0x6d61, 0x6170, 0x6769, 0x3d6e, 0x6f73, 0x7466, 
-0x6177, 0x6572, 0x2f3c, 0x464d, 0x4c43, 0x6e69, 0x5f6b, 0x7255, 0x3e6c, 
-0x4d3c, 0x4346, 0x694c, 0x6b6e, 0x555f, 0x6c72, 0x7250, 0x6665, 0x7869, 
-0x3c3e, 0x4d2f, 0x4346, 0x694c, 0x6b6e, 0x555f, 0x6c72, 0x7250, 0x6665, 
-0x7869, 0x3c3e, 0x464d, 0x4c43, 0x6e69, 0x5f6b, 0x6f54, 0x6c6f, 0x6974, 
-0x3e70, 0x2f3c, 0x464d, 0x4c43, 0x6e69, 0x5f6b, 0x6f54, 0x6c6f, 0x6974, 
-0x3e70, 0x4d3c, 0x4346, 0x694c, 0x6b6e, 0x465f, 0x6c75, 0x546c, 0x7865, 
-0x5474, 0x6f6f, 0x746c, 0x7069, 0x463e, 0x4c41, 0x4553, 0x2f3c, 0x464d, 
-0x4c43, 0x6e69, 0x5f6b, 0x7546, 0x6c6c, 0x6554, 0x7478, 0x6f54, 0x6c6f, 
-0x6974, 0x3e70, 
-    0
-END
-
 IDD_DIALOG_LICENSE DLGINIT
 BEGIN
     IDC_MFCLINK1, 0x37c, 157, 0
@@ -336,13 +317,66 @@ END
 
 STRINGTABLE
 BEGIN
-    IDP_SOCKETS_INIT_FAILED "Windows sockets initialization failed."
-    IDS_STRING_SB_NAME      "WinMTR v0.92 GPL V2 by Appnor MSP - Fully Managed Hosting & Cloud Provider"
+    IDP_SOCKETS_INIT_FAILED "無法初始化 Windows 網路端點。"
+    IDS_STRING_SB_NAME      "WinMTR v1.00－就緒"
     IDS_STRING_SB_PING      "0000000"
-    IDS_STRING_CLEAR_HISTORY "Clear History"
+    IDS_STRING_CLEAR_HISTORY "清除歷程"
+    IDS_STATUS_READY        "就緒"
+    IDS_STATUS_TRACING      "正在追蹤；按兩下節點可查看詳細資料。"
+    IDS_STATUS_STOPPING     "正在等候最後一批封包完成…"
+    IDS_STATUS_RESOLVING    "正在解析主機 %s…"
+    IDS_STATUS_PUBLIC_IP_QUERYING "您的 IP：查詢中…"
+    IDS_STATUS_PUBLIC_IP_FAILED "您的 IP：無法查詢"
+    IDS_STATUS_PUBLIC_IP_FORMAT "您的 IP：%s"
+    IDS_ERROR_NO_HOST       "請輸入要追蹤的主機名稱或 IP 位址。"
+    IDS_ERROR_RESOLVE_FAILED "無法解析指定的主機。"
+    IDS_ERROR_INVALID_OPTIONS "選項超出允許範圍，請檢查輸入值。"
+    IDS_NO_RESPONSE         "主機沒有回應"
+    IDS_NETWORK_INFO_LOADING "目前網路資訊仍在查詢中。"
+    IDS_NETWORK_INFO_UNAVAILABLE "此連線目前無法使用"
+    IDS_NETWORK_INFO_IPV4   "IPv4 連線資訊"
+    IDS_NETWORK_INFO_IPV6   "IPv6 連線資訊"
+    IDS_NETWORK_INFO_ADDRESS "位址"
+    IDS_NETWORK_INFO_HOSTNAME "主機名稱"
+    IDS_NETWORK_INFO_CITY   "城市"
+    IDS_NETWORK_INFO_REGION "地區"
+    IDS_NETWORK_INFO_COUNTRY "國家／地區"
+    IDS_NETWORK_INFO_ASN    "ASN"
+    IDS_NETWORK_INFO_ISP    "網路業者"
+    IDS_NETWORK_INFO_DNS    "本機 DNS 伺服器"
+    IDS_NETWORK_INFO_NOT_AVAILABLE "無法取得"
+    IDS_NETWORK_INFO_DNS_RESOLVER "遞迴 DNS 連線資訊"
+    IDS_NETWORK_INFO_ECS    "EDNS 用戶端子網路（ECS）"
+    IDS_NETWORK_INFO_ECS_SUPPORTED_FORMAT "支援（%s）"
+    IDS_NETWORK_INFO_ECS_NOT_SUPPORTED "不支援"
+    IDS_NETWORK_INFO_ECS_UNKNOWN "無法判斷"
+    IDS_NETWORK_INFO_SOURCE "資料來源"
+    IDS_NETWORK_INFO_SOURCE_VALUE "ipify、ipapi、Team Cymru、Akamai"
+    IDS_COL_HOST            "主機"
+    IDS_COL_HOP             "跳"
+    IDS_COL_LOSS            "遺失 %"
+    IDS_COL_SENT            "已送"
+    IDS_COL_RECEIVED        "已收"
+    IDS_COL_BEST            "最佳"
+    IDS_COL_AVERAGE         "平均"
+    IDS_COL_WORST           "最差"
+    IDS_COL_LAST            "最近"
+    IDS_COL_JITTER          "抖動"
+    IDS_COL_STDDEV          "標準差"
+    IDS_COL_COUNTRY         "國家"
+    IDS_COL_ASN             "ASN"
+    IDS_COL_ISP             "ISP"
+    IDS_FILTER_TEXT         "文字檔 (*.txt)|*.txt|所有檔案 (*.*)|*.*||"
+    IDS_FILTER_HTML         "HTML 檔 (*.htm;*.html)|*.htm;*.html|所有檔案 (*.*)|*.*||"
+    IDS_FILTER_CSV          "CSV 檔 (*.csv)|*.csv|所有檔案 (*.*)|*.*||"
+    IDS_FILTER_JSON         "JSON 檔 (*.json)|*.json|所有檔案 (*.*)|*.*||"
+    IDS_BUTTON_START        "開始(&S)"
+    IDS_BUTTON_STOP         "停止"
+    IDS_WINDOW_TITLE_32     "WinMTR v1.00 32 位元"
+    IDS_WINDOW_TITLE_64     "WinMTR v1.00 64 位元"
 END
 
-#endif    // English (United States) resources
+#endif    // Chinese (Traditional, Taiwan) resources
 /////////////////////////////////////////////////////////////////////////////
 
 
@@ -357,10 +391,10 @@ END
 #define _AFX_NO_TRACKER_RESOURCES
 #define _AFX_NO_PROPERTY_RESOURCES
 
-#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHT)
 #ifdef _WIN32
-LANGUAGE 9, 1
-#pragma code_page(1252)
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL
+#pragma code_page(65001)
 #endif //_WIN32
 #include "afxres.rc"         // Standard components
 #endif

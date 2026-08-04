@@ -61,9 +61,22 @@ void WinMTRProperties::DoDataExchange(CDataExchange* pDX)
 //
 // 
 //*****************************************************************************
-BOOL WinMTRProperties::OnInitDialog() 
+BOOL WinMTRProperties::OnInitDialog()
 {
 	CDialog::OnInitDialog();
+	m_codeFont.CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, WINMTR_CODE_FONT_NAME);
+	m_editIP.SetFont(&m_codeFont);
+	m_editHost.SetFont(&m_codeFont);
+	m_editComment.SetFont(&m_codeFont);
+	m_editSent.SetFont(&m_codeFont);
+	m_editRecv.SetFont(&m_codeFont);
+	m_editLoss.SetFont(&m_codeFont);
+	m_editLast.SetFont(&m_codeFont);
+	m_editBest.SetFont(&m_codeFont);
+	m_editWorst.SetFont(&m_codeFont);
+	m_editAvrg.SetFont(&m_codeFont);
 	char buf[255];
 	
 	m_editIP.SetWindowText(ip);

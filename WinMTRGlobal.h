@@ -45,16 +45,22 @@
 #include <sys/stat.h>
 
 #include "resource.h"
+#include "WinMTRCustomization.h"
 
-#define WINMTR_VERSION	"0.9"
 #define WINMTR_LICENSE	"GPL - GNU Public License"
-#define WINMTR_COPYRIGHT "WinMTR 0.9 (c) 2010-2011 Appnor MSP - Fully Managed Hosting & Cloud Provider www.appnor.com"
-#define WINMTR_HOMEPAGE	"http://WinMTR.sourceforge.net"
+#define WINMTR_COPYRIGHT "WinMTR (c) 2010-2011 Appnor MSP"
 
 #define DEFAULT_PING_SIZE	64
 #define DEFAULT_INTERVAL	1.0
 #define DEFAULT_MAX_LRU		128
 #define DEFAULT_DNS			TRUE
+#define DEFAULT_MAX_HOPS        30
+#define DEFAULT_TIMEOUT_MS      3000
+#define DEFAULT_CYCLES          0
+#define DEFAULT_TOS             0
+#define DEFAULT_BIT_PATTERN     32
+#define DEFAULT_DONT_FRAGMENT   TRUE
+#define DEFAULT_ASN_LOOKUP      TRUE
 
 #define SAVED_PINGS 100
 #define MaxHost 256
@@ -83,24 +89,24 @@
 #define IP_HEADER_LENGTH   20
 
 
-#define MTR_NR_COLS 9
-
-const char MTR_COLS[ MTR_NR_COLS ][10] = {
-		"Hostname",
-		"Nr",
-		"Loss %",
-		"Sent",
-		"Recv",
-		"Best",
-		"Avrg",
-		"Worst",
-		"Last"
+#define MTR_NR_COLS 14
+const UINT MTR_COL_RESOURCE_IDS[MTR_NR_COLS] = {
+        IDS_COL_HOST,
+        IDS_COL_HOP,
+        IDS_COL_LOSS,
+        IDS_COL_SENT,
+        IDS_COL_RECEIVED,
+        IDS_COL_BEST,
+        IDS_COL_AVERAGE,
+        IDS_COL_WORST,
+        IDS_COL_LAST,
+        IDS_COL_JITTER,
+        IDS_COL_STDDEV,
+        IDS_COL_COUNTRY,
+        IDS_COL_ASN,
+        IDS_COL_ISP
 };
-
 const int MTR_COL_LENGTH[ MTR_NR_COLS ] = {
-		190, 30, 50, 40, 40, 50, 50, 50, 50
+        200, 35, 60, 45, 45, 45, 45, 45, 45, 50, 65, 50, 70, 160
 };
-
-int gettimeofday(struct timeval* tv, struct timezone *tz);
-
 #endif // ifndef GLOBAL_H_
