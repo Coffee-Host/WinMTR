@@ -2,6 +2,7 @@
 #include "WinMTRCustomization.h"
 #include "WinMTRNetworkInfoDialog.h"
 
+#include <algorithm>
 #include <vector>
 
 BEGIN_MESSAGE_MAP(WinMTRNetworkInfoDialog, CDialog)
@@ -28,12 +29,93 @@ BOOL WinMTRNetworkInfoDialog::OnInitDialog()
         CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, WINMTR_CODE_FONT_NAME);
     m_information.SetFont(&m_codeFont);
     m_information.SetWindowText(BuildText());
+    AdjustToContent();
     CWnd* closeButton = GetDlgItem(IDOK);
     if (closeButton) {
         closeButton->SetFocus();
         return FALSE;
     }
     return TRUE;
+}
+
+void WinMTRNetworkInfoDialog::AdjustToContent()
+{
+    const CString text = BuildText();
+    CClientDC dc(this);
+    CFont* previousFont = dc.SelectObject(&m_codeFont);
+    int widestLine = 0;
+    int lineCount = 0;
+    CString line;
+    for (int index = 0; AfxExtractSubString(line, text, index, '\n'); ++index) {
+        line.TrimRight("\r");
+        widestLine = std::max(widestLine,
+            static_cast<int>(dc.GetTextExtent(line).cx));
+        ++lineCount;
+    }
+    TEXTMETRIC metrics = {};
+    dc.GetTextMetrics(&metrics);
+    dc.SelectObject(previousFont);
+
+    CRect originalClient;
+    CRect originalWindow;
+    CRect edit;
+    GetClientRect(originalClient);
+    GetWindowRect(originalWindow);
+    m_information.GetWindowRect(edit);
+    ScreenToClient(edit);
+    const int desiredEditWidth = std::max(static_cast<int>(edit.Width()),
+        widestLine + 30);
+    const int desiredEditHeight = std::max(static_cast<int>(edit.Height()),
+        lineCount * static_cast<int>(metrics.tmHeight + metrics.tmExternalLeading) + 16);
+    int desiredWidth = originalWindow.Width() + desiredEditWidth - edit.Width();
+    int desiredHeight = originalWindow.Height() + desiredEditHeight - edit.Height();
+
+    MONITORINFO monitor = {};
+    monitor.cbSize = sizeof(monitor);
+    if (!GetMonitorInfo(MonitorFromWindow(GetSafeHwnd(), MONITOR_DEFAULTTONEAREST),
+        &monitor)) {
+        return;
+    }
+    const int workWidth = static_cast<int>(monitor.rcWork.right - monitor.rcWork.left);
+    const int workHeight = static_cast<int>(monitor.rcWork.bottom - monitor.rcWork.top);
+    desiredWidth = std::min(desiredWidth, workWidth);
+    desiredHeight = std::min(desiredHeight, workHeight);
+    const int left = std::max(static_cast<int>(monitor.rcWork.left),
+        std::min(static_cast<int>(originalWindow.left),
+            static_cast<int>(monitor.rcWork.right) - desiredWidth));
+    const int top = std::max(static_cast<int>(monitor.rcWork.top),
+        std::min(static_cast<int>(originalWindow.top),
+            static_cast<int>(monitor.rcWork.bottom) - desiredHeight));
+    SetWindowPos(NULL, left, top, desiredWidth, desiredHeight,
+        SWP_NOACTIVATE | SWP_NOZORDER);
+
+    CRect client;
+    GetClientRect(client);
+    const int rightMargin = originalClient.right - edit.right;
+    const int controlsArea = originalClient.bottom - edit.bottom;
+    m_information.SetWindowPos(NULL, 0, 0,
+        client.Width() - edit.left - rightMargin,
+        client.Height() - edit.top - controlsArea,
+        SWP_NOMOVE | SWP_NOZORDER);
+
+    CWnd* copyButton = GetDlgItem(ID_COPY_NETWORK_INFO);
+    CWnd* closeButton = GetDlgItem(IDOK);
+    if (copyButton && closeButton) {
+        CRect copy;
+        CRect close;
+        copyButton->GetWindowRect(copy);
+        closeButton->GetWindowRect(close);
+        ScreenToClient(copy);
+        ScreenToClient(close);
+        const int gap = close.left - copy.right;
+        const int groupWidth = copy.Width() + gap + close.Width();
+        const int buttonTop = client.bottom - (originalClient.bottom - copy.top);
+        const int copyLeft = (client.Width() - groupWidth) / 2;
+        copyButton->SetWindowPos(NULL, copyLeft, buttonTop, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+        closeButton->SetWindowPos(NULL, copyLeft + copy.Width() + gap,
+            buttonTop, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+    }
 }
 
 CString WinMTRNetworkInfoDialog::ToDisplayText(const std::string& utf8) const
@@ -113,7 +195,8 @@ CString WinMTRNetworkInfoDialog::BuildText() const
     } else {
         CString format;
         format.LoadString(IDS_NETWORK_INFO_ECS_SUPPORTED_FORMAT);
-        ecsValue.Format(format, static_cast<LPCTSTR>(ToDisplayText(networkInfo.dnsEcs)));
+        ecsValue.Format(format,
+            static_cast<LPCTSTR>(ToDisplayText(networkInfo.dnsEcs)));
     }
     output.AppendFormat("%-12s %s\r\n\r\n", static_cast<LPCTSTR>(ecsLabel),
         static_cast<LPCTSTR>(ecsValue));
@@ -137,8 +220,18 @@ CString WinMTRNetworkInfoDialog::BuildText() const
     output += "\r\n";
     CString sourceLabel;
     CString sourceValue;
+    CString sourceSeparator;
     sourceLabel.LoadString(IDS_NETWORK_INFO_SOURCE);
-    sourceValue.LoadString(IDS_NETWORK_INFO_SOURCE_VALUE);
+    sourceSeparator.LoadString(IDS_NETWORK_INFO_SOURCE_SEPARATOR);
+    if (networkInfo.usedSources.empty()) {
+        sourceValue.LoadString(IDS_NETWORK_INFO_NOT_AVAILABLE);
+    } else {
+        for (size_t i = 0; i < networkInfo.usedSources.size(); ++i) {
+            if (i)
+                sourceValue += sourceSeparator;
+            sourceValue += ToDisplayText(networkInfo.usedSources[i]);
+        }
+    }
     output.AppendFormat("%-12s %s\r\n", static_cast<LPCTSTR>(sourceLabel),
         static_cast<LPCTSTR>(sourceValue));
     return output;

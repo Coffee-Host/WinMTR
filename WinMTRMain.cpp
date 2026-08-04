@@ -12,9 +12,7 @@ BEGIN_MESSAGE_MAP(WinMTRMain, CWinApp)
     ON_COMMAND(ID_HELP, CWinApp::OnHelp)
 END_MESSAGE_MAP()
 
-WinMTRMain::WinMTRMain()
-{
-}
+WinMTRMain::WinMTRMain() {}
 
 namespace {
 
@@ -84,4 +82,9 @@ BOOL WinMTRMain::InitInstance()
 
     dialog.DoModal();
     return FALSE;
+}
+
+int WinMTRMain::ExitInstance()
+{
+    return CWinApp::ExitInstance();
 }

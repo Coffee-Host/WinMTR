@@ -15,6 +15,7 @@ struct IpNetworkDetails {
     std::string countryCode;
     std::string asn;
     std::string isp;
+    std::vector<std::string> sources;
 
     IpNetworkDetails() : available(false) {}
 };
@@ -26,6 +27,7 @@ struct PublicNetworkInfo {
     bool dnsDiagnosticAvailable;
     std::string dnsEcs;
     std::vector<std::string> dnsServers;
+    std::vector<std::string> usedSources;
     std::string error;
 
     PublicNetworkInfo() : dnsDiagnosticAvailable(false) {}

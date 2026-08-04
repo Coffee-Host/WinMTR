@@ -4,11 +4,15 @@
 #define WINMTR_DIALOG_TIMER 100
 #define WM_PUBLIC_NETWORK_INFO (WM_APP + 101)
 
+#include <afxlinkctrl.h>
+
 #include "WinMTRStatusBar.h"
 #include "WinMTRNet.h"
 #include "WinMTRNetworkInfo.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 class WinMTRDialog : public CDialog
 {
@@ -53,6 +57,8 @@ protected:
     afx_msg void OnEXPH();
     afx_msg void OnEXPC();
     afx_msg void OnEXPJ();
+    afx_msg void OnCaptureScreenshot();
+    afx_msg void OnReportMenu();
     afx_msg void OnResetStats();
     afx_msg void OnNetworkInfo();
     afx_msg void OnDblclkList(NMHDR* header, LRESULT* result);
@@ -61,7 +67,6 @@ protected:
     afx_msg void OnCbnCloseupComboHost();
     afx_msg void OnTimer(UINT_PTR eventId);
     afx_msg void OnClose();
-    afx_msg void OnBnClickedCancel();
     afx_msg LRESULT OnPublicNetworkInfoReady(WPARAM, LPARAM value);
     DECLARE_MESSAGE_MAP()
 
@@ -73,6 +78,12 @@ private:
     void ClearHistory();
     void StartPublicInfoLookup();
     void SaveConfiguration();
+    void AdjustColumnWidths();
+    void AdjustWindowToContent();
+    void StretchLastColumnToFill();
+    void SetTraceStatus(const CString& text);
+    void SetPublicInfoPlaceholders(UINT ipTextId);
+    void UpdatePublicInfoSummary(const IpNetworkDetails& details);
     TraceConfig CurrentTraceConfig() const;
     CString LoadText(UINT id) const;
     CString Utf8ToLocal(const std::string& value) const;
@@ -83,19 +94,26 @@ private:
     std::string BuildCsvReport() const;
     std::string BuildJsonReport() const;
 
-    WinMTRStatusBar statusBar;
     CButton m_buttonOptions;
-    CButton m_buttonExit;
     CButton m_buttonStart;
-    CButton m_buttonNetworkInfo;
     CButton m_buttonReset;
+    CButton m_buttonCapture;
+    CButton m_buttonReportMenu;
+    CButton m_buttonNetworkDetails;
+    CStatic m_publicIpSummary;
+    CStatic m_publicHostnameSummary;
+    CStatic m_publicCountrySummary;
+    CStatic m_publicCitySummary;
+    CStatic m_publicAsnSummary;
+    CStatic m_publicIspSummary;
     CComboBox m_comboHost;
     CListCtrl m_listMTR;
     CStatic m_staticS;
     CStatic m_staticJ;
-    CButton m_buttonExpT;
-    CButton m_buttonExpH;
     CFont m_codeFont;
+    CFont m_tableFont;
+    WinMTRStatusBar footerStatus;
+    CMFCLinkCtrl companyLink;
 
     STATES state;
     STATE_TRANSITIONS transition;
@@ -120,11 +138,14 @@ private:
     bool hasMaxLRUFromCmdLine;
     bool hasUseDNSFromCmdLine;
     bool publicInfoQueryStarted;
+    bool adjustingWindow;
+    CSize minimumWindowSize;
     int m_autostart;
     char defaultHostName[1000];
     HICON m_hIcon;
     WinMTRNet* network;
     PublicNetworkInfo* publicNetworkInfo;
+    std::vector<std::pair<int, int> > displayedHopRanges;
 };
 
 #endif // WINMTRDIALOG_H_

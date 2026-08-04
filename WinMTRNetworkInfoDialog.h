@@ -16,6 +16,7 @@ protected:
     DECLARE_MESSAGE_MAP()
 
 private:
+    void AdjustToContent();
     CString BuildText() const;
     CString ToDisplayText(const std::string& utf8) const;
     void AppendField(CString& output, UINT labelId, const std::string& value) const;

@@ -12,6 +12,31 @@
 
 namespace {
 
+bool BitmapHasVisualContent(HDC dc, HBITMAP bitmap, int width, int height)
+{
+    if (!dc || !bitmap || width <= 0 || height <= 0)
+        return false;
+    BITMAPINFO information = {};
+    information.bmiHeader.biSize = sizeof(information.bmiHeader);
+    information.bmiHeader.biWidth = width;
+    information.bmiHeader.biHeight = -height;
+    information.bmiHeader.biPlanes = 1;
+    information.bmiHeader.biBitCount = 32;
+    information.bmiHeader.biCompression = BI_RGB;
+    std::vector<DWORD> pixels(static_cast<size_t>(width) * height);
+    if (!GetDIBits(dc, bitmap, 0, height, &pixels[0], &information,
+        DIB_RGB_COLORS)) {
+        return false;
+    }
+    const DWORD first = pixels[0] & 0x00ffffff;
+    const size_t stride = std::max<size_t>(1, pixels.size() / 2048);
+    for (size_t i = stride; i < pixels.size(); i += stride) {
+        if ((pixels[i] & 0x00ffffff) != first)
+            return true;
+    }
+    return false;
+}
+
 struct DialogTraceContext {
     WinMTRNet* network;
     sockaddr_storage target;
@@ -146,19 +171,20 @@ BEGIN_MESSAGE_MAP(WinMTRDialog, CDialog)
     ON_WM_CLOSE()
     ON_BN_CLICKED(ID_RESTART, OnRestart)
     ON_BN_CLICKED(ID_OPTIONS, OnOptions)
-    ON_BN_CLICKED(ID_CTTC, OnCTTC)
-    ON_BN_CLICKED(ID_CHTC, OnCHTC)
-    ON_BN_CLICKED(ID_EXPT, OnEXPT)
-    ON_BN_CLICKED(ID_EXPH, OnEXPH)
-    ON_BN_CLICKED(ID_EXPC, OnEXPC)
-    ON_BN_CLICKED(ID_EXPJ, OnEXPJ)
+    ON_COMMAND(ID_CTTC, OnCTTC)
+    ON_COMMAND(ID_CHTC, OnCHTC)
+    ON_COMMAND(ID_EXPT, OnEXPT)
+    ON_COMMAND(ID_EXPH, OnEXPH)
+    ON_COMMAND(ID_EXPC, OnEXPC)
+    ON_COMMAND(ID_EXPJ, OnEXPJ)
+    ON_BN_CLICKED(ID_CAPTURE_SCREENSHOT, OnCaptureScreenshot)
+    ON_BN_CLICKED(ID_REPORT_MENU, OnReportMenu)
     ON_BN_CLICKED(ID_RESET_STATS, OnResetStats)
-    ON_BN_CLICKED(ID_NETWORK_INFO, OnNetworkInfo)
+    ON_BN_CLICKED(ID_NETWORK_DETAILS, OnNetworkInfo)
     ON_NOTIFY(NM_DBLCLK, IDC_LIST_MTR, OnDblclkList)
     ON_CBN_SELCHANGE(IDC_COMBO_HOST, OnCbnSelchangeComboHost)
     ON_CBN_SELENDOK(IDC_COMBO_HOST, OnCbnSelendokComboHost)
     ON_CBN_CLOSEUP(IDC_COMBO_HOST, OnCbnCloseupComboHost)
-    ON_BN_CLICKED(IDCANCEL, OnBnClickedCancel)
     ON_MESSAGE(WM_PUBLIC_NETWORK_INFO, OnPublicNetworkInfoReady)
 END_MESSAGE_MAP()
 
@@ -173,7 +199,9 @@ WinMTRDialog::WinMTRDialog(CWnd* parent)
       lookupPublicInfo(WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE),
       hasIntervalFromCmdLine(false), hasPingSizeFromCmdLine(false),
       hasMaxLRUFromCmdLine(false), hasUseDNSFromCmdLine(false),
-      publicInfoQueryStarted(false), m_autostart(0), network(new WinMTRNet()),
+      publicInfoQueryStarted(false), adjustingWindow(false),
+      minimumWindowSize(0, 0), m_autostart(0),
+      network(new WinMTRNet()),
       publicNetworkInfo(NULL)
 {
     ZeroMemory(&traceTarget, sizeof(traceTarget));
@@ -205,16 +233,21 @@ void WinMTRDialog::DoDataExchange(CDataExchange* pDX)
 {
     CDialog::DoDataExchange(pDX);
     DDX_Control(pDX, ID_OPTIONS, m_buttonOptions);
-    DDX_Control(pDX, IDCANCEL, m_buttonExit);
     DDX_Control(pDX, ID_RESTART, m_buttonStart);
-    DDX_Control(pDX, ID_NETWORK_INFO, m_buttonNetworkInfo);
     DDX_Control(pDX, ID_RESET_STATS, m_buttonReset);
+    DDX_Control(pDX, ID_CAPTURE_SCREENSHOT, m_buttonCapture);
+    DDX_Control(pDX, ID_REPORT_MENU, m_buttonReportMenu);
+    DDX_Control(pDX, ID_NETWORK_DETAILS, m_buttonNetworkDetails);
+    DDX_Control(pDX, IDC_PUBLIC_IP_TEXT, m_publicIpSummary);
+    DDX_Control(pDX, IDC_PUBLIC_HOSTNAME_TEXT, m_publicHostnameSummary);
+    DDX_Control(pDX, IDC_PUBLIC_COUNTRY_TEXT, m_publicCountrySummary);
+    DDX_Control(pDX, IDC_PUBLIC_CITY_TEXT, m_publicCitySummary);
+    DDX_Control(pDX, IDC_PUBLIC_ASN_TEXT, m_publicAsnSummary);
+    DDX_Control(pDX, IDC_PUBLIC_ISP_TEXT, m_publicIspSummary);
     DDX_Control(pDX, IDC_COMBO_HOST, m_comboHost);
     DDX_Control(pDX, IDC_LIST_MTR, m_listMTR);
     DDX_Control(pDX, IDC_STATICS, m_staticS);
     DDX_Control(pDX, IDC_STATICJ, m_staticJ);
-    DDX_Control(pDX, ID_EXPH, m_buttonExpH);
-    DDX_Control(pDX, ID_EXPT, m_buttonExpT);
 }
 
 CString WinMTRDialog::LoadText(UINT id) const
@@ -246,66 +279,152 @@ CString WinMTRDialog::Utf8ToLocal(const std::string& value) const
 #endif
 }
 
+void WinMTRDialog::SetTraceStatus(const CString& text)
+{
+    if (::IsWindow(footerStatus.GetSafeHwnd()))
+        footerStatus.SetPaneText(0, text);
+}
+
+void WinMTRDialog::SetPublicInfoPlaceholders(UINT ipTextId)
+{
+    const CString unavailable = LoadText(IDS_NETWORK_INFO_NOT_AVAILABLE);
+    CString value;
+    m_publicIpSummary.SetWindowText(LoadText(ipTextId));
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_HOSTNAME_FORMAT),
+        static_cast<LPCTSTR>(unavailable));
+    m_publicHostnameSummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_COUNTRY_FORMAT),
+        static_cast<LPCTSTR>(unavailable));
+    m_publicCountrySummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_CITY_FORMAT),
+        static_cast<LPCTSTR>(unavailable));
+    m_publicCitySummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_ASN_FORMAT),
+        static_cast<LPCTSTR>(unavailable));
+    m_publicAsnSummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_ISP_FORMAT),
+        static_cast<LPCTSTR>(unavailable));
+    m_publicIspSummary.SetWindowText(value);
+    m_buttonNetworkDetails.EnableWindow(FALSE);
+}
+
+void WinMTRDialog::UpdatePublicInfoSummary(const IpNetworkDetails& details)
+{
+    const CString unavailable = LoadText(IDS_NETWORK_INFO_NOT_AVAILABLE);
+    CString value;
+    value.Format(LoadText(IDS_STATUS_PUBLIC_IP_FORMAT),
+        static_cast<LPCTSTR>(Utf8ToLocal(details.address)));
+    m_publicIpSummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_HOSTNAME_FORMAT),
+        static_cast<LPCTSTR>(details.hostname.empty()
+            ? unavailable : Utf8ToLocal(details.hostname)));
+    m_publicHostnameSummary.SetWindowText(value);
+    const CString country = details.country.empty()
+        ? (details.countryCode.empty()
+            ? unavailable : Utf8ToLocal(details.countryCode))
+        : Utf8ToLocal(details.country);
+    const CString city = details.city.empty()
+        ? unavailable : Utf8ToLocal(details.city);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_COUNTRY_FORMAT),
+        static_cast<LPCTSTR>(country));
+    m_publicCountrySummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_CITY_FORMAT),
+        static_cast<LPCTSTR>(city));
+    m_publicCitySummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_ASN_FORMAT),
+        static_cast<LPCTSTR>(details.asn.empty()
+            ? unavailable : Utf8ToLocal(details.asn)));
+    m_publicAsnSummary.SetWindowText(value);
+    value.Format(LoadText(IDS_NETWORK_SUMMARY_ISP_FORMAT),
+        static_cast<LPCTSTR>(details.isp.empty()
+            ? unavailable : Utf8ToLocal(details.isp)));
+    m_publicIspSummary.SetWindowText(value);
+    m_buttonNetworkDetails.EnableWindow(TRUE);
+}
+
 BOOL WinMTRDialog::OnInitDialog()
 {
     CDialog::OnInitDialog();
 
-#ifdef _WIN64
-    const CString caption = LoadText(IDS_WINDOW_TITLE_64);
-#else
-    const CString caption = LoadText(IDS_WINDOW_TITLE_32);
-#endif
+    const CString caption = LoadText(IDS_WINDOW_TITLE);
     SetWindowText(caption);
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
     SetTimer(1, WINMTR_DIALOG_TIMER, NULL);
 
-    if (!statusBar.Create(this))
-        return FALSE;
-    statusBar.GetStatusBarCtrl().SetMinHeight(24);
-    const UINT indicators[2] = { IDS_STATUS_READY, IDS_STATUS_PUBLIC_IP_QUERYING };
-    statusBar.SetIndicators(indicators, 2);
-    statusBar.SetPaneInfo(0, statusBar.GetItemID(0), SBPS_STRETCH, 0);
-    statusBar.SetPaneInfo(1, statusBar.GetItemID(1), SBPS_NORMAL, 220);
-
-    m_codeFont.CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0,
+    m_codeFont.CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, WINMTR_CODE_FONT_NAME);
-    m_listMTR.SetFont(&m_codeFont);
+    m_tableFont.CreateFont(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, 0,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, WINMTR_CODE_FONT_NAME);
+    m_listMTR.SetFont(&m_tableFont);
     m_comboHost.SetFont(&m_codeFont);
+    m_publicIpSummary.SetFont(&m_codeFont);
+    m_publicHostnameSummary.SetFont(&m_codeFont);
+    m_publicCountrySummary.SetFont(&m_codeFont);
+    m_publicCitySummary.SetFont(&m_codeFont);
+    m_publicAsnSummary.SetFont(&m_codeFont);
+    m_publicIspSummary.SetFont(&m_codeFont);
+    m_buttonNetworkDetails.SetWindowText(LoadText(IDS_BUTTON_NETWORK_DETAILS));
+    SetPublicInfoPlaceholders(IDS_STATUS_PUBLIC_IP_QUERYING);
+    SetTraceStatus(LoadText(IDS_STATUS_READY));
+
+    if (!footerStatus.Create(this))
+        return FALSE;
+    footerStatus.SetBarStyle((footerStatus.GetBarStyle() & ~CBRS_ALIGN_ANY) |
+        CBRS_BOTTOM);
+    footerStatus.GetStatusBarCtrl().SetMinHeight(20);
+    const UINT footerIndicators[2] = { IDS_STATUS_READY, IDS_COMPANY_LINK };
+    footerStatus.SetIndicators(footerIndicators, 2);
+    footerStatus.SetPaneInfo(0, footerStatus.GetItemID(0), SBPS_STRETCH, 0);
+    footerStatus.SetFont(&m_codeFont);
+    const CString companyName = LoadText(IDS_COMPANY_LINK);
+    CClientDC footerDc(&footerStatus);
+    CFont* previousFooterFont = footerDc.SelectObject(&m_codeFont);
+    const int companyPaneWidth = footerDc.GetTextExtent(companyName).cx + 20;
+    footerDc.SelectObject(previousFooterFont);
+    footerStatus.SetPaneInfo(1, footerStatus.GetItemID(1), SBPS_NORMAL,
+        companyPaneWidth);
+    if (companyLink.Create(companyName,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP, CRect(0, 0, 0, 0),
+        &footerStatus, IDC_COMPANY_LINK)) {
+        companyLink.SetFont(&m_codeFont);
+        companyLink.SetURL(WINMTR_COMPANY_URL);
+        footerStatus.AddPaneControl(&companyLink, IDS_COMPANY_LINK, FALSE);
+        footerStatus.SetPaneText(1, _T(""));
+    }
     m_listMTR.SetExtendedStyle(m_listMTR.GetExtendedStyle() |
         LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     for (int i = 0; i < MTR_NR_COLS; ++i)
         m_listMTR.InsertColumn(i, LoadText(MTR_COL_RESOURCE_IDS[i]), LVCFMT_LEFT,
             MTR_COL_LENGTH[i], -1);
 
-    CRect clientStart;
-    CRect clientNow;
-    GetClientRect(clientStart);
-    RepositionBars(AFX_IDW_CONTROLBAR_FIRST, AFX_IDW_CONTROLBAR_LAST, 0,
-        reposQuery, clientNow);
-    const CPoint offset(clientNow.left - clientStart.left,
-        clientNow.top - clientStart.top);
-    CRect childRect;
-    for (CWnd* child = GetWindow(GW_CHILD); child; child = child->GetNextWindow()) {
-        child->GetWindowRect(childRect);
-        ScreenToClient(childRect);
-        childRect.OffsetRect(offset);
-        child->MoveWindow(childRect, FALSE);
-    }
     CRect window;
     GetWindowRect(window);
-    window.right += clientStart.Width() - clientNow.Width();
-    window.bottom += clientStart.Height() - clientNow.Height();
+    CRect footer;
+    footerStatus.GetWindowRect(footer);
+    window.bottom += footer.Height();
     MoveWindow(window, FALSE);
     RepositionBars(AFX_IDW_CONTROLBAR_FIRST, AFX_IDW_CONTROLBAR_LAST, 0);
+    GetWindowRect(window);
+    CRect listWindow;
+    m_listMTR.GetWindowRect(listWindow);
+    minimumWindowSize = CSize(window.Width(), window.Height() - listWindow.Height());
+    m_listMTR.ShowWindow(SW_HIDE);
+
+    AdjustColumnWidths();
+    AdjustWindowToContent();
+    CRect client;
+    GetClientRect(client);
+    PostMessage(WM_SIZE, SIZE_RESTORED,
+        MAKELPARAM(client.Width(), client.Height()));
 
     InitRegistry();
-    m_buttonNetworkInfo.EnableWindow(FALSE);
     if (lookupPublicInfo)
         StartPublicInfoLookup();
     else
-        statusBar.SetPaneText(1, LoadText(IDS_NETWORK_INFO_UNAVAILABLE));
+        SetPublicInfoPlaceholders(IDS_NETWORK_INFO_UNAVAILABLE);
 
     m_comboHost.SetFocus();
     if (m_autostart) {
@@ -462,14 +581,14 @@ int WinMTRDialog::ResolveTraceTarget()
     m_comboHost.GetWindowText(hostText);
     CString status;
     status.Format(LoadText(IDS_STATUS_RESOLVING), static_cast<LPCTSTR>(hostText));
-    statusBar.SetPaneText(0, status);
+    SetTraceStatus(status);
 
     addrinfo hints = {};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     addrinfo* addresses = NULL;
     if (getaddrinfo(hostText, NULL, &hints, &addresses) != 0 || !addresses) {
-        statusBar.SetPaneText(0, LoadText(IDS_STATUS_READY));
+        SetTraceStatus(LoadText(IDS_STATUS_READY));
         AfxMessageBox(LoadText(IDS_ERROR_RESOLVE_FAILED), MB_ICONWARNING);
         return 0;
     }
@@ -507,6 +626,9 @@ void WinMTRDialog::OnRestart()
         return;
 
     m_listMTR.DeleteAllItems();
+    displayedHopRanges.clear();
+    AdjustColumnWidths();
+    AdjustWindowToContent();
     if (m_comboHost.FindStringExact(-1, host) == CB_ERR) {
         m_comboHost.InsertString(m_comboHost.GetCount() - 1, host);
         HKEY key = NULL;
@@ -572,7 +694,7 @@ void WinMTRDialog::Transit(STATES newState)
         m_buttonStart.SetWindowText(LoadText(IDS_BUTTON_STOP));
         m_comboHost.EnableWindow(FALSE);
         m_buttonOptions.EnableWindow(FALSE);
-        statusBar.SetPaneText(0, LoadText(IDS_STATUS_TRACING));
+        SetTraceStatus(LoadText(IDS_STATUS_TRACING));
         DialogTraceContext* context = new DialogTraceContext;
         context->network = network;
         context->target = traceTarget;
@@ -591,7 +713,7 @@ void WinMTRDialog::Transit(STATES newState)
         transition = TRACING_TO_STOPPING;
         m_buttonStart.EnableWindow(FALSE);
         network->StopTrace();
-        statusBar.SetPaneText(0, LoadText(IDS_STATUS_STOPPING));
+        SetTraceStatus(LoadText(IDS_STATUS_STOPPING));
         DisplayRedraw();
     } else if ((oldState == STOPPING || oldState == TRACING) && newState == IDLE) {
         transition = STOPPING_TO_IDLE;
@@ -600,7 +722,7 @@ void WinMTRDialog::Transit(STATES newState)
         m_buttonStart.SetWindowText(LoadText(IDS_BUTTON_START));
         m_comboHost.EnableWindow(TRUE);
         m_buttonOptions.EnableWindow(TRUE);
-        statusBar.SetPaneText(0, LoadText(IDS_STATUS_READY));
+        SetTraceStatus(LoadText(IDS_STATUS_READY));
         DisplayRedraw();
     } else if (newState == EXIT) {
         transition = oldState == TRACING ? TRACING_TO_EXIT
@@ -610,39 +732,64 @@ void WinMTRDialog::Transit(STATES newState)
         m_buttonOptions.EnableWindow(FALSE);
         network->StopTrace();
         if (traceThread)
-            statusBar.SetPaneText(0, LoadText(IDS_STATUS_STOPPING));
+            SetTraceStatus(LoadText(IDS_STATUS_STOPPING));
     }
 }
 
 int WinMTRDialog::DisplayRedraw()
 {
     const int hops = network->GetMax();
-    while (m_listMTR.GetItemCount() > hops)
+    std::vector<std::pair<int, int> > ranges;
+    for (int hopIndex = 0; hopIndex < hops; ++hopIndex) {
+        const int start = hopIndex;
+        if (!network->GetHopSnapshot(hopIndex).hasAddress) {
+            while (hopIndex + 1 < hops &&
+                !network->GetHopSnapshot(hopIndex + 1).hasAddress) {
+                ++hopIndex;
+            }
+        }
+        ranges.push_back(std::make_pair(start, hopIndex));
+    }
+    while (m_listMTR.GetItemCount() > static_cast<int>(ranges.size()))
         m_listMTR.DeleteItem(m_listMTR.GetItemCount() - 1);
 
-    for (int i = 0; i < hops; ++i) {
-        const HopSnapshot hop = network->GetHopSnapshot(i);
+    for (size_t rowIndex = 0; rowIndex < ranges.size(); ++rowIndex) {
+        const int start = ranges[rowIndex].first;
+        const int end = ranges[rowIndex].second;
+        const HopSnapshot hop = network->GetHopSnapshot(start);
         CString name = hop.name.empty() ? Utf8ToLocal(hop.address) : Utf8ToLocal(hop.name);
         if (name.IsEmpty())
             name = LoadText(IDS_NO_RESPONSE);
-        if (m_listMTR.GetItemCount() <= i)
-            m_listMTR.InsertItem(i, name);
+        const int row = static_cast<int>(rowIndex);
+        if (m_listMTR.GetItemCount() <= row)
+            m_listMTR.InsertItem(row, name);
         else
-            m_listMTR.SetItemText(i, 0, name);
+            m_listMTR.SetItemText(row, 0, name);
 
         CString value;
-        const int numericValues[10] = {
-            i + 1, hop.lossPercent, hop.xmit, hop.returned, hop.best,
+        if (end > start)
+            value.Format("%d-%d", start + 1, end + 1);
+        else
+            value.Format("%d", start + 1);
+        m_listMTR.SetItemText(row, 1, value);
+        const int numericValues[9] = {
+            hop.lossPercent, hop.xmit, hop.returned, hop.best,
             hop.average, hop.worst, hop.last, hop.jitter, hop.standardDeviation
         };
-        for (int column = 1; column <= 10; ++column) {
-            value.Format("%d", numericValues[column - 1]);
-            m_listMTR.SetItemText(i, column, value);
+        for (int column = 2; column <= 10; ++column) {
+            if (column == 2)
+                value.Format("%d%%", numericValues[column - 2]);
+            else
+                value.Format("%d", numericValues[column - 2]);
+            m_listMTR.SetItemText(row, column, value);
         }
-        m_listMTR.SetItemText(i, 11, Utf8ToLocal(hop.country));
-        m_listMTR.SetItemText(i, 12, Utf8ToLocal(hop.asn));
-        m_listMTR.SetItemText(i, 13, Utf8ToLocal(hop.isp));
+        m_listMTR.SetItemText(row, 11, Utf8ToLocal(hop.country));
+        m_listMTR.SetItemText(row, 12, Utf8ToLocal(hop.asn));
+        m_listMTR.SetItemText(row, 13, Utf8ToLocal(hop.isp));
     }
+    displayedHopRanges.swap(ranges);
+    AdjustColumnWidths();
+    AdjustWindowToContent();
     return 0;
 }
 
@@ -651,7 +798,13 @@ void WinMTRDialog::OnDblclkList(NMHDR*, LRESULT* result)
     POSITION position = m_listMTR.GetFirstSelectedItemPosition();
     if (position) {
         const int item = m_listMTR.GetNextSelectedItem(position);
-        const HopSnapshot hop = network->GetHopSnapshot(item);
+        if (item < 0 || item >= static_cast<int>(displayedHopRanges.size())) {
+            *result = 0;
+            return;
+        }
+        const int start = displayedHopRanges[item].first;
+        const int end = displayedHopRanges[item].second;
+        const HopSnapshot hop = network->GetHopSnapshot(start);
         WinMTRProperties properties(this);
         strncpy_s(properties.host,
             hop.name.empty() ? hop.address.c_str() : hop.name.c_str(), _TRUNCATE);
@@ -660,8 +813,13 @@ void WinMTRDialog::OnDblclkList(NMHDR*, LRESULT* result)
         if (!hop.country.empty()) comment += hop.country;
         if (!hop.asn.empty()) comment += "  AS" + hop.asn;
         if (!hop.isp.empty()) comment += "  " + hop.isp;
-        if (comment.empty() && !hop.hasAddress)
+        if (end > start) {
+            CString range;
+            range.Format(LoadText(IDS_NO_RESPONSE_RANGE), start + 1, end + 1);
+            comment = CStringToUtf8(range);
+        } else if (comment.empty() && !hop.hasAddress) {
             comment = CStringToUtf8(LoadText(IDS_NO_RESPONSE));
+        }
         strncpy_s(properties.comment, comment.c_str(), _TRUNCATE);
         properties.ping_avrg = static_cast<float>(hop.average);
         properties.ping_last = static_cast<float>(hop.last);
@@ -679,6 +837,9 @@ void WinMTRDialog::OnResetStats()
 {
     network->ResetHops();
     m_listMTR.DeleteAllItems();
+    displayedHopRanges.clear();
+    AdjustColumnWidths();
+    AdjustWindowToContent();
 }
 
 void WinMTRDialog::StartPublicInfoLookup()
@@ -686,7 +847,7 @@ void WinMTRDialog::StartPublicInfoLookup()
     if (publicInfoQueryStarted)
         return;
     publicInfoQueryStarted = true;
-    statusBar.SetPaneText(1, LoadText(IDS_STATUS_PUBLIC_IP_QUERYING));
+    SetPublicInfoPlaceholders(IDS_STATUS_PUBLIC_IP_QUERYING);
     PublicInfoContext* context = new PublicInfoContext;
     context->window = GetSafeHwnd();
     const uintptr_t handle = _beginthreadex(NULL, 0, PublicInfoThread, context, 0, NULL);
@@ -695,7 +856,7 @@ void WinMTRDialog::StartPublicInfoLookup()
     } else {
         delete context;
         publicInfoQueryStarted = false;
-        statusBar.SetPaneText(1, LoadText(IDS_STATUS_PUBLIC_IP_FAILED));
+        SetPublicInfoPlaceholders(IDS_STATUS_PUBLIC_IP_FAILED);
     }
 }
 
@@ -706,13 +867,16 @@ LRESULT WinMTRDialog::OnPublicNetworkInfoReady(WPARAM, LPARAM value)
     const std::string address = publicNetworkInfo->ipv4.available
         ? publicNetworkInfo->ipv4.address : publicNetworkInfo->ipv6.address;
     if (address.empty()) {
-        statusBar.SetPaneText(1, LoadText(IDS_STATUS_PUBLIC_IP_FAILED));
+        SetPublicInfoPlaceholders(IDS_STATUS_PUBLIC_IP_FAILED);
     } else {
-        CString status;
-        status.Format(LoadText(IDS_STATUS_PUBLIC_IP_FORMAT),
-            static_cast<LPCTSTR>(Utf8ToLocal(address)));
-        statusBar.SetPaneText(1, status);
-        m_buttonNetworkInfo.EnableWindow(TRUE);
+        UpdatePublicInfoSummary(publicNetworkInfo->ipv4.available
+            ? publicNetworkInfo->ipv4 : publicNetworkInfo->ipv6);
+        AdjustColumnWidths();
+        AdjustWindowToContent();
+        CRect client;
+        GetClientRect(client);
+        PostMessage(WM_SIZE, SIZE_RESTORED,
+            MAKELPARAM(client.Width(), client.Height()));
     }
     return 0;
 }
@@ -873,6 +1037,209 @@ void WinMTRDialog::OnEXPH() { SaveReport(BuildHtmlReport(), "html", LoadText(IDS
 void WinMTRDialog::OnEXPC() { SaveReport(BuildCsvReport(), "csv", LoadText(IDS_FILTER_CSV)); }
 void WinMTRDialog::OnEXPJ() { SaveReport(BuildJsonReport(), "json", LoadText(IDS_FILTER_JSON)); }
 
+void WinMTRDialog::OnReportMenu()
+{
+    CMenu menu;
+    if (!menu.CreatePopupMenu())
+        return;
+    menu.AppendMenu(MF_STRING, ID_CTTC, LoadText(IDS_MENU_COPY_TEXT));
+    menu.AppendMenu(MF_STRING, ID_CHTC, LoadText(IDS_MENU_COPY_HTML));
+    menu.AppendMenu(MF_SEPARATOR);
+    menu.AppendMenu(MF_STRING, ID_EXPT, LoadText(IDS_MENU_EXPORT_TEXT));
+    menu.AppendMenu(MF_STRING, ID_EXPH, LoadText(IDS_MENU_EXPORT_HTML));
+    menu.AppendMenu(MF_STRING, ID_EXPC, LoadText(IDS_MENU_EXPORT_CSV));
+    menu.AppendMenu(MF_STRING, ID_EXPJ, LoadText(IDS_MENU_EXPORT_JSON));
+
+    CRect button;
+    m_buttonReportMenu.GetWindowRect(button);
+    const UINT command = menu.TrackPopupMenu(TPM_LEFTALIGN | TPM_TOPALIGN |
+        TPM_RIGHTBUTTON | TPM_RETURNCMD, button.left, button.bottom, this);
+    if (command)
+        SendMessage(WM_COMMAND, MAKEWPARAM(command, 0), 0);
+}
+
+void WinMTRDialog::OnCaptureScreenshot()
+{
+    CRect window;
+    GetWindowRect(window);
+    const int width = window.Width();
+    const int height = window.Height();
+    HDC screen = ::GetDC(NULL);
+    HDC memory = screen ? CreateCompatibleDC(screen) : NULL;
+    HBITMAP bitmap = memory ? CreateCompatibleBitmap(screen, width, height) : NULL;
+    HGDIOBJ previous = bitmap ? SelectObject(memory, bitmap) : NULL;
+    bool captured = bitmap && ::PrintWindow(GetSafeHwnd(), memory, 0) != FALSE;
+    if (previous)
+        SelectObject(memory, previous);
+
+    if (captured && !BitmapHasVisualContent(memory, bitmap, width, height))
+        captured = false;
+    if (!captured && bitmap) {
+        previous = SelectObject(memory, bitmap);
+        captured = BitBlt(memory, 0, 0, width, height, screen, window.left,
+            window.top, SRCCOPY | CAPTUREBLT) != FALSE;
+        SelectObject(memory, previous);
+    }
+
+    bool copied = false;
+    if (captured && ::OpenClipboard(GetSafeHwnd())) {
+        ::EmptyClipboard();
+        copied = SetClipboardData(CF_BITMAP, bitmap) != NULL;
+        ::CloseClipboard();
+        if (copied)
+            bitmap = NULL;
+    }
+    if (bitmap)
+        DeleteObject(bitmap);
+    if (memory)
+        DeleteDC(memory);
+    if (screen)
+        ::ReleaseDC(NULL, screen);
+
+    SetTraceStatus(
+        LoadText(copied ? IDS_STATUS_SCREENSHOT_COPIED : IDS_STATUS_SCREENSHOT_FAILED));
+}
+
+void WinMTRDialog::AdjustColumnWidths()
+{
+    if (!::IsWindow(m_listMTR.GetSafeHwnd()))
+        return;
+    CClientDC dc(&m_listMTR);
+    CFont* previous = dc.SelectObject(&m_tableFont);
+    const int itemCount = m_listMTR.GetItemCount();
+    for (int column = 0; column < MTR_NR_COLS; ++column) {
+        int width = static_cast<int>(
+            dc.GetTextExtent(LoadText(MTR_COL_RESOURCE_IDS[column])).cx) + 12;
+        for (int item = 0; item < itemCount; ++item)
+            width = std::max(width,
+                static_cast<int>(dc.GetTextExtent(
+                    m_listMTR.GetItemText(item, column)).cx) + 10);
+        const int maximum = (column == 0 || column == MTR_NR_COLS - 1) ? 420 : 180;
+        m_listMTR.SetColumnWidth(column, std::max(34, std::min(width, maximum)));
+    }
+    dc.SelectObject(previous);
+}
+
+void WinMTRDialog::AdjustWindowToContent()
+{
+    if (adjustingWindow || !::IsWindow(m_listMTR.GetSafeHwnd()))
+        return;
+    const int itemCount = m_listMTR.GetItemCount();
+    const bool hasRows = itemCount > 0;
+    m_listMTR.ShowWindow(hasRows ? SW_SHOW : SW_HIDE);
+
+    int contentWidth = 0;
+    if (hasRows) {
+        contentWidth = GetSystemMetrics(SM_CXVSCROLL) + 6;
+        for (int column = 0; column < MTR_NR_COLS; ++column)
+            contentWidth += m_listMTR.GetColumnWidth(column);
+    }
+
+    if (::IsWindow(m_publicIpSummary.GetSafeHwnd()) &&
+        ::IsWindow(m_publicHostnameSummary.GetSafeHwnd()) &&
+        ::IsWindow(m_publicCountrySummary.GetSafeHwnd()) &&
+        ::IsWindow(m_publicCitySummary.GetSafeHwnd()) &&
+        ::IsWindow(m_publicAsnSummary.GetSafeHwnd()) &&
+        ::IsWindow(m_publicIspSummary.GetSafeHwnd()) &&
+        ::IsWindow(m_buttonNetworkDetails.GetSafeHwnd())) {
+        CClientDC dc(this);
+        CFont* previous = dc.SelectObject(&m_codeFont);
+        CString text;
+        m_publicIpSummary.GetWindowText(text);
+        const int ipWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicHostnameSummary.GetWindowText(text);
+        const int hostnameWidth = std::max(110,
+            static_cast<int>(dc.GetTextExtent(text).cx) + 8);
+        m_publicCountrySummary.GetWindowText(text);
+        const int countryWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicCitySummary.GetWindowText(text);
+        const int cityWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicAsnSummary.GetWindowText(text);
+        const int asnWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        const int connectionWidth = std::max(150, std::max(ipWidth, hostnameWidth));
+        const int locationWidth = std::max(100, std::max(countryWidth, cityWidth));
+        const int organizationWidth = std::max(100, asnWidth);
+        dc.SelectObject(previous);
+        CRect details;
+        m_buttonNetworkDetails.GetWindowRect(details);
+        const int summaryWidth = connectionWidth + locationWidth +
+            organizationWidth + details.Width() + 18;
+        contentWidth = std::max(contentWidth, summaryWidth);
+    }
+
+    int contentHeight = 0;
+    if (hasRows) {
+        int rowHeight = 18;
+        CRect row;
+        if (m_listMTR.GetItemRect(0, row, LVIR_BOUNDS))
+            rowHeight = std::max(rowHeight, static_cast<int>(row.Height()));
+        int headerHeight = 20;
+        CHeaderCtrl* header = m_listMTR.GetHeaderCtrl();
+        CRect headerRect;
+        if (header) {
+            header->GetWindowRect(headerRect);
+            headerHeight = std::max(headerHeight,
+                static_cast<int>(headerRect.Height()));
+        }
+        contentHeight = headerHeight + itemCount * rowHeight + 4;
+    }
+
+    CRect client;
+    GetClientRect(client);
+    CRect current;
+    GetWindowRect(current);
+    const int nonClientWidth = current.Width() - client.Width();
+    int desiredWidth = contentWidth > 0
+        ? contentWidth + nonClientWidth + 16
+        : minimumWindowSize.cx;
+    int desiredHeight = minimumWindowSize.cy + contentHeight;
+    desiredWidth = std::max(desiredWidth, static_cast<int>(minimumWindowSize.cx));
+    desiredHeight = std::max(desiredHeight, static_cast<int>(minimumWindowSize.cy));
+
+    MONITORINFO monitor = {};
+    monitor.cbSize = sizeof(monitor);
+    if (!GetMonitorInfo(MonitorFromWindow(GetSafeHwnd(), MONITOR_DEFAULTTONEAREST),
+        &monitor)) {
+        return;
+    }
+    const int workWidth = static_cast<int>(monitor.rcWork.right - monitor.rcWork.left);
+    const int workHeight = static_cast<int>(monitor.rcWork.bottom - monitor.rcWork.top);
+    desiredWidth = std::min(desiredWidth, workWidth);
+    desiredHeight = std::min(desiredHeight, workHeight);
+    int left = std::max(static_cast<int>(monitor.rcWork.left),
+        std::min(static_cast<int>(current.left),
+            static_cast<int>(monitor.rcWork.right) - desiredWidth));
+    int top = std::max(static_cast<int>(monitor.rcWork.top),
+        std::min(static_cast<int>(current.top),
+            static_cast<int>(monitor.rcWork.bottom) - desiredHeight));
+
+    if (current.Width() != desiredWidth || current.Height() != desiredHeight ||
+        current.left != left || current.top != top) {
+        adjustingWindow = true;
+        SetWindowPos(NULL, left, top, desiredWidth, desiredHeight,
+            SWP_NOACTIVATE | SWP_NOZORDER);
+        adjustingWindow = false;
+    }
+    StretchLastColumnToFill();
+}
+
+void WinMTRDialog::StretchLastColumnToFill()
+{
+    if (!::IsWindow(m_listMTR.GetSafeHwnd()))
+        return;
+    CRect client;
+    m_listMTR.GetClientRect(client);
+    int usedWidth = 0;
+    for (int column = 0; column < MTR_NR_COLS; ++column)
+        usedWidth += m_listMTR.GetColumnWidth(column);
+    const int availableWidth = client.Width() - GetSystemMetrics(SM_CXVSCROLL) - 2;
+    if (availableWidth > usedWidth) {
+        const int lastColumn = MTR_NR_COLS - 1;
+        m_listMTR.SetColumnWidth(lastColumn,
+            m_listMTR.GetColumnWidth(lastColumn) + availableWidth - usedWidth);
+    }
+}
+
 void WinMTRDialog::ClearHistory()
 {
     HKEY key = NULL;
@@ -925,16 +1292,32 @@ void WinMTRDialog::OnTimer(UINT_PTR eventId)
 }
 
 void WinMTRDialog::OnClose() { Transit(EXIT); }
-void WinMTRDialog::OnBnClickedCancel() { Transit(EXIT); }
 void WinMTRDialog::OnCancel() {}
 
 void WinMTRDialog::OnSizing(UINT side, LPRECT rectangle)
 {
     CDialog::OnSizing(side, rectangle);
-    if (rectangle->right - rectangle->left < 850)
-        rectangle->right = rectangle->left + 850;
-    if (rectangle->bottom - rectangle->top < 500)
-        rectangle->bottom = rectangle->top + 500;
+    int minimumHeight = minimumWindowSize.cy;
+    if (::IsWindow(m_listMTR.GetSafeHwnd()) && m_listMTR.GetItemCount() > 0) {
+        int rowHeight = 18;
+        CRect row;
+        if (m_listMTR.GetItemRect(0, row, LVIR_BOUNDS))
+            rowHeight = std::max(rowHeight, static_cast<int>(row.Height()));
+        int headerHeight = 20;
+        CHeaderCtrl* header = m_listMTR.GetHeaderCtrl();
+        CRect headerRect;
+        if (header) {
+            header->GetWindowRect(headerRect);
+            headerHeight = std::max(headerHeight,
+                static_cast<int>(headerRect.Height()));
+        }
+        minimumHeight += headerHeight + rowHeight + 4;
+    }
+    if (minimumWindowSize.cx > 0 &&
+        rectangle->right - rectangle->left < minimumWindowSize.cx)
+        rectangle->right = rectangle->left + minimumWindowSize.cx;
+    if (minimumHeight > 0 && rectangle->bottom - rectangle->top < minimumHeight)
+        rectangle->bottom = rectangle->top + minimumHeight;
 }
 
 void WinMTRDialog::OnSize(UINT type, int width, int height)
@@ -942,24 +1325,155 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
     CDialog::OnSize(type, width, height);
     CRect client;
     GetClientRect(&client);
+    int footerHeight = 0;
+    if (::IsWindow(footerStatus.GetSafeHwnd())) {
+        CRect footer;
+        footerStatus.GetWindowRect(footer);
+        footerHeight = static_cast<int>(footer.Height());
+    }
     CRect item;
     if (::IsWindow(m_staticS.m_hWnd)) {
         m_staticS.GetWindowRect(&item);
         ScreenToClient(&item);
-        m_staticS.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 10,
+        m_staticS.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 8,
             item.Height(), SWP_NOMOVE | SWP_NOZORDER);
     }
     if (::IsWindow(m_staticJ.m_hWnd)) {
         m_staticJ.GetWindowRect(&item);
         ScreenToClient(&item);
-        m_staticJ.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 10,
+        m_staticJ.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 8,
             item.Height(), SWP_NOMOVE | SWP_NOZORDER);
     }
-    if (::IsWindow(m_listMTR.m_hWnd)) {
+    if (::IsWindow(m_listMTR.m_hWnd) && m_listMTR.GetItemCount() > 0) {
         m_listMTR.GetWindowRect(&item);
         ScreenToClient(&item);
-        m_listMTR.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 10,
-            client.Height() - item.top - 24, SWP_NOMOVE | SWP_NOZORDER);
+        m_listMTR.ShowWindow(SW_SHOW);
+        m_listMTR.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 8,
+            client.Height() - item.top - footerHeight - 8,
+            SWP_NOMOVE | SWP_NOZORDER);
+        StretchLastColumnToFill();
+    } else if (::IsWindow(m_listMTR.m_hWnd)) {
+        m_listMTR.ShowWindow(SW_HIDE);
+    }
+    if (::IsWindow(m_buttonStart.m_hWnd) &&
+        ::IsWindow(m_buttonOptions.m_hWnd) &&
+        ::IsWindow(m_buttonCapture.m_hWnd) &&
+        ::IsWindow(m_buttonReportMenu.m_hWnd) &&
+        ::IsWindow(m_buttonReset.m_hWnd)) {
+        CRect start;
+        CRect options;
+        CRect capture;
+        CRect report;
+        CRect reset;
+        m_buttonStart.GetWindowRect(start);
+        m_buttonOptions.GetWindowRect(options);
+        m_buttonCapture.GetWindowRect(capture);
+        m_buttonReportMenu.GetWindowRect(report);
+        m_buttonReset.GetWindowRect(reset);
+        ScreenToClient(start);
+        ScreenToClient(options);
+        ScreenToClient(capture);
+        ScreenToClient(report);
+        ScreenToClient(reset);
+        const int gap = 6;
+        const int resetLeft = client.Width() - 10 - reset.Width();
+        const int reportLeft = resetLeft - gap - report.Width();
+        const int captureLeft = reportLeft - gap - capture.Width();
+        const int optionsLeft = captureLeft - gap - options.Width();
+        const int startLeft = optionsLeft - gap - start.Width();
+        m_buttonStart.SetWindowPos(NULL, startLeft, start.top, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+        m_buttonOptions.SetWindowPos(NULL, optionsLeft, options.top, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+        m_buttonReset.SetWindowPos(NULL, resetLeft, reset.top, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+        m_buttonReportMenu.SetWindowPos(NULL, reportLeft, report.top, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+        m_buttonCapture.SetWindowPos(NULL, captureLeft, capture.top, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+    }
+    if (::IsWindow(m_publicIpSummary.m_hWnd) &&
+        ::IsWindow(m_publicHostnameSummary.m_hWnd) &&
+        ::IsWindow(m_publicCountrySummary.m_hWnd) &&
+        ::IsWindow(m_publicCitySummary.m_hWnd) &&
+        ::IsWindow(m_publicAsnSummary.m_hWnd) &&
+        ::IsWindow(m_publicIspSummary.m_hWnd) &&
+        ::IsWindow(m_buttonNetworkDetails.m_hWnd)) {
+        CRect ip;
+        CRect hostname;
+        CRect country;
+        CRect city;
+        CRect asn;
+        CRect isp;
+        CRect details;
+        m_publicIpSummary.GetWindowRect(ip);
+        m_publicHostnameSummary.GetWindowRect(hostname);
+        m_publicCountrySummary.GetWindowRect(country);
+        m_publicCitySummary.GetWindowRect(city);
+        m_publicAsnSummary.GetWindowRect(asn);
+        m_publicIspSummary.GetWindowRect(isp);
+        m_buttonNetworkDetails.GetWindowRect(details);
+        ScreenToClient(ip);
+        ScreenToClient(hostname);
+        ScreenToClient(country);
+        ScreenToClient(city);
+        ScreenToClient(asn);
+        ScreenToClient(isp);
+        ScreenToClient(details);
+
+        const int gap = 6;
+        const int detailsLeft = client.Width() - 10 - details.Width();
+        m_buttonNetworkDetails.SetWindowPos(NULL, detailsLeft, details.top, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER);
+
+        CClientDC dc(this);
+        CFont* previous = dc.SelectObject(&m_codeFont);
+        CString text;
+        m_publicIpSummary.GetWindowText(text);
+        const int ipWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicHostnameSummary.GetWindowText(text);
+        const int hostnameWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicCountrySummary.GetWindowText(text);
+        const int countryWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicCitySummary.GetWindowText(text);
+        const int cityWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        m_publicAsnSummary.GetWindowText(text);
+        const int asnWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        dc.SelectObject(previous);
+
+        int connectionWidth = std::max(150, std::max(ipWidth, hostnameWidth));
+        int locationWidth = std::max(100, std::max(countryWidth, cityWidth));
+        const int staticsWidth = detailsLeft - gap - ip.left - 2 * gap;
+        int organizationWidth = std::max(asnWidth,
+            staticsWidth - connectionWidth - locationWidth);
+        if (organizationWidth < 64) {
+            int overflow = 64 - organizationWidth;
+            const int locationReduction = std::min(overflow,
+                std::max(0, locationWidth - 90));
+            locationWidth -= locationReduction;
+            overflow -= locationReduction;
+            const int connectionReduction = std::min(overflow,
+                std::max(0, connectionWidth - 130));
+            connectionWidth -= connectionReduction;
+            organizationWidth = std::max(64,
+                staticsWidth - connectionWidth - locationWidth);
+        }
+
+        int left = ip.left;
+        m_publicIpSummary.SetWindowPos(NULL, left, ip.top,
+            connectionWidth, ip.Height(), SWP_NOZORDER);
+        m_publicHostnameSummary.SetWindowPos(NULL, left, hostname.top,
+            connectionWidth, hostname.Height(), SWP_NOZORDER);
+        left += connectionWidth + gap;
+        m_publicCountrySummary.SetWindowPos(NULL, left, country.top,
+            locationWidth, country.Height(), SWP_NOZORDER);
+        m_publicCitySummary.SetWindowPos(NULL, left, city.top,
+            locationWidth, city.Height(), SWP_NOZORDER);
+        left += locationWidth + gap;
+        m_publicAsnSummary.SetWindowPos(NULL, left, asn.top,
+            organizationWidth, asn.Height(), SWP_NOZORDER);
+        m_publicIspSummary.SetWindowPos(NULL, left, isp.top,
+            organizationWidth, isp.Height(), SWP_NOZORDER);
     }
     RepositionBars(AFX_IDW_CONTROLBAR_FIRST, AFX_IDW_CONTROLBAR_LAST, 0);
 }

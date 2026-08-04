@@ -13,10 +13,6 @@
 #ifndef GLOBAL_H_
 #define GLOBAL_H_
 
-#ifndef  _WIN64
-#define  _USE_32BIT_TIME_T
-#endif
-
 #define VC_EXTRALEAN
 
 #include <afxwin.h>

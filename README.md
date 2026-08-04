@@ -1,17 +1,21 @@
 # WinMTR
 
-WinMTR 是適用於 Windows 10／11 的路由與網路延遲診斷工具，結合持續 ping 與 traceroute，並以台灣繁體中文呈現。程式使用原生 Win32／MFC，可建置為單一執行檔，不需要安裝額外執行階段。
+WinMTR 是適用於 Windows 7 至 Windows 11 64 位元版本的路由與網路延遲診斷工具，結合持續 ping 與 traceroute，並以台灣繁體中文呈現。程式使用精簡的原生 Windows／MFC 實作，可建置為單一執行檔，不需要安裝額外執行階段。
 
 ## 功能
 
 - IPv4 與 IPv6 ICMP 路由追蹤。
-- 每一跳的遺失率、已送／已收封包、最佳／平均／最差／最近延遲、抖動與標準差。
+- 每一跳的丟包率、已送／已收封包、最佳／平均／最差／最近延遲、抖動與標準差。
 - 主機名稱反向解析，以及每一跳的國家／地區代碼、ASN 與 ISP。
 - 可調整探測間隔、封包大小、最大跳數、逾時、循環次數、TOS、資料樣式與禁止分段（DF）。
 - 顯示目前公網 IPv4／IPv6、主機名稱、城市、地區、國家、ASN 與網路業者。
 - 顯示本機 DNS 伺服器、遞迴 DNS 的 ASN／業者／地區，以及 EDNS 用戶端子網路（ECS）狀態。
+- 表格依實際資料調整欄寬，主視窗與網路資訊視窗在螢幕工作區內依內容調整大小。
+- 截取完整視窗並複製至剪貼簿；低頻使用的複製與匯出操作收納於單一選單。
 - 複製文字／HTML，以及匯出 UTF-8 文字、HTML、CSV、JSON。
-- 主機歷程、統計重設、命令列啟動與 32／64 位元版本。
+- 主視窗第一排集中主機輸入與操作按鈕；第二區以雙行欄位顯示 IP／Hostname、國家／城市、ASN／ISP，並由「詳細資料」進入完整網路資訊。
+- 連續無回應的節點會折疊為單列並標示跳數範圍。
+- 主機歷程、統計重設、命令列啟動與 64 位元版本。
 - 主機、IP、英文、數字與程式資料使用 Consolas；一般介面使用 Microsoft JhengHei UI。
 
 ## 與 mtr 的範圍差異
@@ -20,7 +24,7 @@ WinMTR 是適用於 Windows 10／11 的路由與網路延遲診斷工具，結�
 
 ## 使用方式
 
-1. 執行對應平台的 `WinMTR.exe`。
+1. 執行 `WinMTR.exe`。
 2. 輸入主機名稱或 IP 位址。
 3. 視需要在「選項」調整探測參數、DNS、ASN 與公網資訊查詢。
 4. 按「開始」，再以表格或匯出報告檢視結果。
@@ -38,7 +42,7 @@ WinMTR.exe --help
 
 ## 隱私與資料來源
 
-「啟動時查詢目前公網 IP、地區與業者」預設開啟，可在選項中關閉。啟用時會連線至 ipify 與 ipapi；ASN／ISP 功能會透過 DNS 查詢 Team Cymru，遞迴 DNS／ECS 診斷會查詢 Akamai。這些服務會看到必要的查詢來源資訊，且其可用性與使用限制由各服務提供者決定。
+「啟動時查詢目前公網 IP、地區與業者」預設開啟，可在選項中關閉。公網 IP、逐跳 ASN／ISP 優先使用 `ipinfo.io` 與 `v6.ipinfo.io`；遞迴 DNS／ECS 診斷只使用 Akamai 的 `whoami.ds.akahelp.net` TXT 記錄。ipinfo 無法使用時，公網 IP 依序由 ipify 與 ipapi 補齊，逐跳 ASN／ISP 則由 ipapi 與 Team Cymru 補齊。詳細資料視窗只列出該次查詢實際使用的服務。這些服務會看到必要的查詢來源資訊，且其可用性、快取與使用限制由各服務提供者決定。
 
 所有端點、預設開關、品牌與字型都可在 [`WinMTRCustomization.h`](WinMTRCustomization.h) 修改。完整字串與自訂位置索引請見 [`CUSTOMIZATION.md`](CUSTOMIZATION.md)。
 
@@ -48,13 +52,11 @@ WinMTR.exe --help
 
 ```powershell
 msbuild WinMTR.sln /m /t:Rebuild /p:Configuration=Release /p:Platform=x64
-msbuild WinMTR.sln /m /t:Rebuild /p:Configuration=Release /p:Platform=Win32
 ```
 
 輸出位置：
 
-- `Release_x64/WinMTR.exe`
-- `Release_x32/WinMTR.exe`
+- `Release/WinMTR.exe`
 
 ## 授權
 

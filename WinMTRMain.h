@@ -6,6 +6,7 @@ class WinMTRMain : public CWinApp
 public:
     WinMTRMain();
     virtual BOOL InitInstance();
+    virtual int ExitInstance();
     DECLARE_MESSAGE_MAP()
 };
 

@@ -43,7 +43,7 @@
 #define IDS_NETWORK_INFO_ECS_NOT_SUPPORTED 142
 #define IDS_NETWORK_INFO_ECS_UNKNOWN    143
 #define IDS_NETWORK_INFO_SOURCE         144
-#define IDS_NETWORK_INFO_SOURCE_VALUE   145
+#define IDS_NETWORK_INFO_SOURCE_SEPARATOR 145
 #define IDS_COL_HOST                    150
 #define IDS_COL_HOP                     151
 #define IDS_COL_LOSS                    152
@@ -64,8 +64,23 @@
 #define IDS_FILTER_JSON                 167
 #define IDS_BUTTON_START                168
 #define IDS_BUTTON_STOP                 169
-#define IDS_WINDOW_TITLE_32             170
-#define IDS_WINDOW_TITLE_64             171
+#define IDS_WINDOW_TITLE                170
+#define IDS_NO_RESPONSE_RANGE           171
+#define IDS_MENU_COPY_TEXT              172
+#define IDS_MENU_COPY_HTML              173
+#define IDS_MENU_EXPORT_TEXT            174
+#define IDS_MENU_EXPORT_HTML            175
+#define IDS_MENU_EXPORT_CSV             176
+#define IDS_MENU_EXPORT_JSON            177
+#define IDS_STATUS_SCREENSHOT_COPIED    178
+#define IDS_STATUS_SCREENSHOT_FAILED    179
+#define IDS_COMPANY_LINK                184
+#define IDS_NETWORK_SUMMARY_HOSTNAME_FORMAT 185
+#define IDS_NETWORK_SUMMARY_COUNTRY_FORMAT 186
+#define IDS_NETWORK_SUMMARY_CITY_FORMAT 187
+#define IDS_NETWORK_SUMMARY_ASN_FORMAT  188
+#define IDS_NETWORK_SUMMARY_ISP_FORMAT  189
+#define IDS_BUTTON_NETWORK_DETAILS      190
 #define IDC_EDIT_HOST                   1000
 #define IDC_LIST_MTR                    1001
 #define ID_RESTART                      1002
@@ -102,12 +117,21 @@
 #define IDC_CHECK_DF                    1032
 #define IDC_CHECK_ASN                   1033
 #define IDC_CHECK_PUBLIC_INFO           1034
-#define ID_NETWORK_INFO                 1035
 #define ID_RESET_STATS                  1036
 #define ID_EXPC                         1037
 #define ID_EXPJ                         1038
 #define IDC_EDIT_NETWORK_INFO           1039
 #define ID_COPY_NETWORK_INFO            1040
+#define ID_CAPTURE_SCREENSHOT           1041
+#define ID_REPORT_MENU                  1042
+#define IDC_PUBLIC_IP_TEXT              1043
+#define IDC_PUBLIC_HOSTNAME_TEXT        1044
+#define IDC_COMPANY_LINK                1045
+#define IDC_PUBLIC_COUNTRY_TEXT         1046
+#define IDC_PUBLIC_ASN_TEXT             1047
+#define ID_NETWORK_DETAILS              1048
+#define IDC_PUBLIC_CITY_TEXT            1049
+#define IDC_PUBLIC_ISP_TEXT             1050
 
 // Next default values for new objects
 // 
