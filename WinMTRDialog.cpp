@@ -197,6 +197,7 @@ WinMTRDialog::WinMTRDialog(CWnd* parent)
       bitPattern(DEFAULT_BIT_PATTERN), useDNS(DEFAULT_DNS),
       dontFragment(DEFAULT_DONT_FRAGMENT), lookupAsn(DEFAULT_ASN_LOOKUP),
       lookupPublicInfo(WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE),
+      useIPv4(DEFAULT_IPV4), useIPv6(DEFAULT_IPV6),
       hasIntervalFromCmdLine(false), hasPingSizeFromCmdLine(false),
       hasMaxLRUFromCmdLine(false), hasUseDNSFromCmdLine(false),
       publicInfoQueryStarted(false), adjustingWindow(false),
@@ -360,6 +361,14 @@ BOOL WinMTRDialog::OnInitDialog()
         CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, WINMTR_CODE_FONT_NAME);
     m_listMTR.SetFont(&m_tableFont);
     m_comboHost.SetFont(&m_codeFont);
+    CRect hostDisplayRect;
+    m_comboHost.GetWindowRect(hostDisplayRect);
+    ScreenToClient(hostDisplayRect);
+    if (m_traceHostDisplay.CreateEx(WS_EX_CLIENTEDGE, _T("EDIT"), _T(""),
+        WS_CHILD | ES_AUTOHSCROLL | ES_READONLY, hostDisplayRect, this,
+        IDC_TRACE_HOST_DISPLAY)) {
+        m_traceHostDisplay.SetFont(&m_codeFont);
+    }
     m_publicIpSummary.SetFont(&m_codeFont);
     m_publicHostnameSummary.SetFont(&m_codeFont);
     m_publicCountrySummary.SetFont(&m_codeFont);
@@ -374,7 +383,7 @@ BOOL WinMTRDialog::OnInitDialog()
         return FALSE;
     footerStatus.SetBarStyle((footerStatus.GetBarStyle() & ~CBRS_ALIGN_ANY) |
         CBRS_BOTTOM);
-    footerStatus.GetStatusBarCtrl().SetMinHeight(20);
+    footerStatus.GetStatusBarCtrl().SetMinHeight(24);
     const UINT footerIndicators[2] = { IDS_STATUS_READY, IDS_COMPANY_LINK };
     footerStatus.SetIndicators(footerIndicators, 2);
     footerStatus.SetPaneInfo(0, footerStatus.GetItemID(0), SBPS_STRETCH, 0);
@@ -410,7 +419,8 @@ BOOL WinMTRDialog::OnInitDialog()
     GetWindowRect(window);
     CRect listWindow;
     m_listMTR.GetWindowRect(listWindow);
-    minimumWindowSize = CSize(window.Width(), window.Height() - listWindow.Height());
+    minimumWindowSize = CSize(window.Width(),
+        window.Height() - listWindow.Height() + 6);
     m_listMTR.ShowWindow(SW_HIDE);
 
     AdjustColumnWidths();
@@ -426,10 +436,11 @@ BOOL WinMTRDialog::OnInitDialog()
     else
         SetPublicInfoPlaceholders(IDS_NETWORK_INFO_UNAVAILABLE);
 
-    m_comboHost.SetFocus();
     if (m_autostart) {
         m_comboHost.SetWindowText(defaultHostName);
         OnRestart();
+    } else {
+        m_comboHost.SetFocus();
     }
     return FALSE;
 }
@@ -471,6 +482,16 @@ BOOL WinMTRDialog::InitRegistry()
         if (ReadDword(config, "DontFragment", value)) dontFragment = value ? TRUE : FALSE;
         if (ReadDword(config, "LookupAsn", value)) lookupAsn = value ? TRUE : FALSE;
         if (ReadDword(config, "LookupPublicInfo", value)) lookupPublicInfo = value ? TRUE : FALSE;
+        if (ReadDword(config, "UseIPv4", value)) useIPv4 = value ? TRUE : FALSE;
+        else WriteDword(config, "UseIPv4", useIPv4 ? 1 : 0);
+        if (ReadDword(config, "UseIPv6", value)) useIPv6 = value ? TRUE : FALSE;
+        else WriteDword(config, "UseIPv6", useIPv6 ? 1 : 0);
+        if (!useIPv4 && !useIPv6) {
+            useIPv4 = DEFAULT_IPV4;
+            useIPv6 = DEFAULT_IPV6;
+            WriteDword(config, "UseIPv4", useIPv4 ? 1 : 0);
+            WriteDword(config, "UseIPv6", useIPv6 ? 1 : 0);
+        }
         RegCloseKey(config);
     }
 
@@ -526,6 +547,8 @@ void WinMTRDialog::SaveConfiguration()
     WriteDword(key, "DontFragment", dontFragment ? 1 : 0);
     WriteDword(key, "LookupAsn", lookupAsn ? 1 : 0);
     WriteDword(key, "LookupPublicInfo", lookupPublicInfo ? 1 : 0);
+    WriteDword(key, "UseIPv4", useIPv4 ? 1 : 0);
+    WriteDword(key, "UseIPv6", useIPv6 ? 1 : 0);
     RegCloseKey(key);
 }
 
@@ -584,7 +607,8 @@ int WinMTRDialog::ResolveTraceTarget()
     SetTraceStatus(status);
 
     addrinfo hints = {};
-    hints.ai_family = AF_UNSPEC;
+    hints.ai_family = useIPv4 && useIPv6
+        ? AF_UNSPEC : useIPv6 ? AF_INET6 : AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     addrinfo* addresses = NULL;
     if (getaddrinfo(hostText, NULL, &hints, &addresses) != 0 || !addresses) {
@@ -664,6 +688,8 @@ void WinMTRDialog::OnOptions()
     options.SetDontFragment(dontFragment);
     options.SetLookupAsn(lookupAsn);
     options.SetLookupPublicInfo(lookupPublicInfo);
+    options.SetUseIPv4(useIPv4);
+    options.SetUseIPv6(useIPv6);
     if (options.DoModal() != IDOK)
         return;
 
@@ -679,6 +705,8 @@ void WinMTRDialog::OnOptions()
     dontFragment = options.GetDontFragment();
     lookupAsn = options.GetLookupAsn();
     lookupPublicInfo = options.GetLookupPublicInfo();
+    useIPv4 = options.GetUseIPv4();
+    useIPv6 = options.GetUseIPv6();
     SaveConfiguration();
     if (lookupPublicInfo && !publicInfoQueryStarted)
         StartPublicInfoLookup();
@@ -692,7 +720,8 @@ void WinMTRDialog::Transit(STATES newState)
     if (oldState == IDLE && newState == TRACING) {
         transition = IDLE_TO_TRACING;
         m_buttonStart.SetWindowText(LoadText(IDS_BUTTON_STOP));
-        m_comboHost.EnableWindow(FALSE);
+        m_buttonStart.SetFocus();
+        SetHostControlTracing(true);
         m_buttonOptions.EnableWindow(FALSE);
         SetTraceStatus(LoadText(IDS_STATUS_TRACING));
         DialogTraceContext* context = new DialogTraceContext;
@@ -704,7 +733,7 @@ void WinMTRDialog::Transit(STATES newState)
             delete context;
             state = IDLE;
             m_buttonStart.SetWindowText(LoadText(IDS_BUTTON_START));
-            m_comboHost.EnableWindow(TRUE);
+            SetHostControlTracing(false);
             m_buttonOptions.EnableWindow(TRUE);
             return;
         }
@@ -720,7 +749,7 @@ void WinMTRDialog::Transit(STATES newState)
         state = IDLE;
         m_buttonStart.EnableWindow(TRUE);
         m_buttonStart.SetWindowText(LoadText(IDS_BUTTON_START));
-        m_comboHost.EnableWindow(TRUE);
+        SetHostControlTracing(false);
         m_buttonOptions.EnableWindow(TRUE);
         SetTraceStatus(LoadText(IDS_STATUS_READY));
         DisplayRedraw();
@@ -1109,13 +1138,12 @@ void WinMTRDialog::AdjustColumnWidths()
     const int itemCount = m_listMTR.GetItemCount();
     for (int column = 0; column < MTR_NR_COLS; ++column) {
         int width = static_cast<int>(
-            dc.GetTextExtent(LoadText(MTR_COL_RESOURCE_IDS[column])).cx) + 12;
+            dc.GetTextExtent(LoadText(MTR_COL_RESOURCE_IDS[column])).cx) + 22;
         for (int item = 0; item < itemCount; ++item)
             width = std::max(width,
                 static_cast<int>(dc.GetTextExtent(
-                    m_listMTR.GetItemText(item, column)).cx) + 10);
-        const int maximum = (column == 0 || column == MTR_NR_COLS - 1) ? 420 : 180;
-        m_listMTR.SetColumnWidth(column, std::max(34, std::min(width, maximum)));
+                    m_listMTR.GetItemText(item, column)).cx) + 20);
+        m_listMTR.SetColumnWidth(column, std::max(40, width));
     }
     dc.SelectObject(previous);
 }
@@ -1204,6 +1232,8 @@ void WinMTRDialog::AdjustWindowToContent()
     }
     const int workWidth = static_cast<int>(monitor.rcWork.right - monitor.rcWork.left);
     const int workHeight = static_cast<int>(monitor.rcWork.bottom - monitor.rcWork.top);
+    if (desiredWidth > workWidth)
+        desiredHeight += GetSystemMetrics(SM_CYHSCROLL);
     desiredWidth = std::min(desiredWidth, workWidth);
     desiredHeight = std::min(desiredHeight, workHeight);
     int left = std::max(static_cast<int>(monitor.rcWork.left),
@@ -1237,6 +1267,25 @@ void WinMTRDialog::StretchLastColumnToFill()
         const int lastColumn = MTR_NR_COLS - 1;
         m_listMTR.SetColumnWidth(lastColumn,
             m_listMTR.GetColumnWidth(lastColumn) + availableWidth - usedWidth);
+    }
+}
+
+void WinMTRDialog::SetHostControlTracing(bool tracing)
+{
+    if (!::IsWindow(m_traceHostDisplay.GetSafeHwnd())) {
+        m_comboHost.EnableWindow(tracing ? FALSE : TRUE);
+        return;
+    }
+    if (tracing) {
+        CString host;
+        m_comboHost.GetWindowText(host);
+        m_traceHostDisplay.SetWindowText(host);
+        m_comboHost.ShowWindow(SW_HIDE);
+        m_traceHostDisplay.ShowWindow(SW_SHOW);
+    } else {
+        m_traceHostDisplay.ShowWindow(SW_HIDE);
+        m_comboHost.ShowWindow(SW_SHOW);
+        m_comboHost.EnableWindow(TRUE);
     }
 }
 
@@ -1365,22 +1414,33 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
         CRect capture;
         CRect report;
         CRect reset;
+        CRect host;
         m_buttonStart.GetWindowRect(start);
         m_buttonOptions.GetWindowRect(options);
         m_buttonCapture.GetWindowRect(capture);
         m_buttonReportMenu.GetWindowRect(report);
         m_buttonReset.GetWindowRect(reset);
+        m_comboHost.GetWindowRect(host);
         ScreenToClient(start);
         ScreenToClient(options);
         ScreenToClient(capture);
         ScreenToClient(report);
         ScreenToClient(reset);
+        ScreenToClient(host);
         const int gap = 6;
-        const int resetLeft = client.Width() - 10 - reset.Width();
+        const int resetLeft = client.Width() - 14 - reset.Width();
         const int reportLeft = resetLeft - gap - report.Width();
         const int captureLeft = reportLeft - gap - capture.Width();
         const int optionsLeft = captureLeft - gap - options.Width();
         const int startLeft = optionsLeft - gap - start.Width();
+        const int hostWidth = std::max(60,
+            startLeft - gap - static_cast<int>(host.left));
+        m_comboHost.SetWindowPos(NULL, 0, 0, hostWidth, host.Height(),
+            SWP_NOMOVE | SWP_NOZORDER);
+        if (::IsWindow(m_traceHostDisplay.GetSafeHwnd())) {
+            m_traceHostDisplay.SetWindowPos(NULL, host.left, host.top,
+                hostWidth, host.Height(), SWP_NOZORDER);
+        }
         m_buttonStart.SetWindowPos(NULL, startLeft, start.top, 0, 0,
             SWP_NOSIZE | SWP_NOZORDER);
         m_buttonOptions.SetWindowPos(NULL, optionsLeft, options.top, 0, 0,
@@ -1422,7 +1482,7 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
         ScreenToClient(details);
 
         const int gap = 6;
-        const int detailsLeft = client.Width() - 10 - details.Width();
+        const int detailsLeft = client.Width() - 14 - details.Width();
         m_buttonNetworkDetails.SetWindowPos(NULL, detailsLeft, details.top, 0, 0,
             SWP_NOSIZE | SWP_NOZORDER);
 

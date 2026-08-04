@@ -57,6 +57,8 @@
 #define DEFAULT_BIT_PATTERN     32
 #define DEFAULT_DONT_FRAGMENT   TRUE
 #define DEFAULT_ASN_LOOKUP      TRUE
+#define DEFAULT_IPV4            TRUE
+#define DEFAULT_IPV6            TRUE
 
 #define SAVED_PINGS 100
 #define MaxHost 256

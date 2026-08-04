@@ -18,6 +18,8 @@ public:
     void SetDontFragment(BOOL value) { dontFragment = value; }
     void SetLookupAsn(BOOL value) { lookupAsn = value; }
     void SetLookupPublicInfo(BOOL value) { lookupPublicInfo = value; }
+    void SetUseIPv4(BOOL value) { useIPv4 = value; }
+    void SetUseIPv6(BOOL value) { useIPv6 = value; }
 
     BOOL GetUseDNS() const { return useDNS; }
     double GetInterval() const { return interval; }
@@ -31,6 +33,8 @@ public:
     BOOL GetDontFragment() const { return dontFragment; }
     BOOL GetLookupAsn() const { return lookupAsn; }
     BOOL GetLookupPublicInfo() const { return lookupPublicInfo; }
+    BOOL GetUseIPv4() const { return useIPv4; }
+    BOOL GetUseIPv6() const { return useIPv6; }
 
     enum { IDD = IDD_DIALOG_OPTIONS };
 
@@ -39,9 +43,13 @@ protected:
     virtual BOOL OnInitDialog();
     virtual void OnOK();
     afx_msg void OnLicense();
+    afx_msg void OnRestoreDefaults();
     DECLARE_MESSAGE_MAP()
 
 private:
+    void PopulateControls();
+    void ResetValuesToDefaults();
+
     CEdit m_editSize;
     CEdit m_editInterval;
     CEdit m_editMaxLRU;
@@ -54,6 +62,8 @@ private:
     CButton m_checkDF;
     CButton m_checkAsn;
     CButton m_checkPublicInfo;
+    CButton m_checkIPv4;
+    CButton m_checkIPv6;
     CFont m_codeFont;
 
     double interval;
@@ -68,6 +78,8 @@ private:
     BOOL dontFragment;
     BOOL lookupAsn;
     BOOL lookupPublicInfo;
+    BOOL useIPv4;
+    BOOL useIPv6;
 };
 
 #endif // WINMTROPTIONS_H_

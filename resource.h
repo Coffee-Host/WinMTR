@@ -81,6 +81,7 @@
 #define IDS_NETWORK_SUMMARY_ASN_FORMAT  188
 #define IDS_NETWORK_SUMMARY_ISP_FORMAT  189
 #define IDS_BUTTON_NETWORK_DETAILS      190
+#define IDS_ERROR_ADDRESS_FAMILY_REQUIRED 191
 #define IDC_EDIT_HOST                   1000
 #define IDC_LIST_MTR                    1001
 #define ID_RESTART                      1002
@@ -132,6 +133,10 @@
 #define ID_NETWORK_DETAILS              1048
 #define IDC_PUBLIC_CITY_TEXT            1049
 #define IDC_PUBLIC_ISP_TEXT             1050
+#define ID_RESTORE_DEFAULTS             1051
+#define IDC_CHECK_IPV4                  1052
+#define IDC_CHECK_IPV6                  1053
+#define IDC_TRACE_HOST_DISPLAY          1054
 
 // Next default values for new objects
 // 

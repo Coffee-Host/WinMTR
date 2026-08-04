@@ -4,6 +4,7 @@
 
 BEGIN_MESSAGE_MAP(WinMTROptions, CDialog)
     ON_BN_CLICKED(ID_LICENSE, OnLicense)
+    ON_BN_CLICKED(ID_RESTORE_DEFAULTS, OnRestoreDefaults)
 END_MESSAGE_MAP()
 
 WinMTROptions::WinMTROptions(CWnd* pParent)
@@ -13,7 +14,8 @@ WinMTROptions::WinMTROptions(CWnd* pParent)
       cycles(DEFAULT_CYCLES), tos(DEFAULT_TOS), bitPattern(DEFAULT_BIT_PATTERN),
       useDNS(DEFAULT_DNS), dontFragment(DEFAULT_DONT_FRAGMENT),
       lookupAsn(DEFAULT_ASN_LOOKUP),
-      lookupPublicInfo(WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE)
+      lookupPublicInfo(WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE),
+      useIPv4(DEFAULT_IPV4), useIPv6(DEFAULT_IPV6)
 {
 }
 
@@ -32,6 +34,8 @@ void WinMTROptions::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_CHECK_DF, m_checkDF);
     DDX_Control(pDX, IDC_CHECK_ASN, m_checkAsn);
     DDX_Control(pDX, IDC_CHECK_PUBLIC_INFO, m_checkPublicInfo);
+    DDX_Control(pDX, IDC_CHECK_IPV4, m_checkIPv4);
+    DDX_Control(pDX, IDC_CHECK_IPV6, m_checkIPv6);
 }
 
 BOOL WinMTROptions::OnInitDialog()
@@ -48,6 +52,13 @@ BOOL WinMTROptions::OnInitDialog()
     m_editCycles.SetFont(&m_codeFont);
     m_editTos.SetFont(&m_codeFont);
     m_editPattern.SetFont(&m_codeFont);
+    PopulateControls();
+    m_editInterval.SetFocus();
+    return FALSE;
+}
+
+void WinMTROptions::PopulateControls()
+{
     CString text;
     text.Format("%.1f", interval);
     m_editInterval.SetWindowText(text);
@@ -69,8 +80,34 @@ BOOL WinMTROptions::OnInitDialog()
     m_checkDF.SetCheck(dontFragment);
     m_checkAsn.SetCheck(lookupAsn);
     m_checkPublicInfo.SetCheck(lookupPublicInfo);
+    m_checkIPv4.SetCheck(useIPv4);
+    m_checkIPv6.SetCheck(useIPv6);
+}
+
+void WinMTROptions::ResetValuesToDefaults()
+{
+    interval = DEFAULT_INTERVAL;
+    pingSize = DEFAULT_PING_SIZE;
+    maxLRU = DEFAULT_MAX_LRU;
+    maxHops = DEFAULT_MAX_HOPS;
+    timeoutMs = DEFAULT_TIMEOUT_MS;
+    cycles = DEFAULT_CYCLES;
+    tos = DEFAULT_TOS;
+    bitPattern = DEFAULT_BIT_PATTERN;
+    useDNS = DEFAULT_DNS;
+    dontFragment = DEFAULT_DONT_FRAGMENT;
+    lookupAsn = DEFAULT_ASN_LOOKUP;
+    lookupPublicInfo = WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE;
+    useIPv4 = DEFAULT_IPV4;
+    useIPv6 = DEFAULT_IPV6;
+}
+
+void WinMTROptions::OnRestoreDefaults()
+{
+    ResetValuesToDefaults();
+    PopulateControls();
     m_editInterval.SetFocus();
-    return FALSE;
+    m_editInterval.SetSel(0, -1);
 }
 
 void WinMTROptions::OnOK()
@@ -92,6 +129,8 @@ void WinMTROptions::OnOK()
     const int newTos = atoi(text);
     m_editPattern.GetWindowText(text);
     const int newPattern = atoi(text);
+    const BOOL newUseIPv4 = m_checkIPv4.GetCheck();
+    const BOOL newUseIPv6 = m_checkIPv6.GetCheck();
 
     if (newInterval < 0.1 || newInterval > 60.0 ||
         newPingSize < 0 || newPingSize > MAXPACKET ||
@@ -103,6 +142,12 @@ void WinMTROptions::OnOK()
         newPattern < -1 || newPattern > 255) {
         CString error;
         error.LoadString(IDS_ERROR_INVALID_OPTIONS);
+        AfxMessageBox(error, MB_ICONWARNING);
+        return;
+    }
+    if (!newUseIPv4 && !newUseIPv6) {
+        CString error;
+        error.LoadString(IDS_ERROR_ADDRESS_FAMILY_REQUIRED);
         AfxMessageBox(error, MB_ICONWARNING);
         return;
     }
@@ -119,6 +164,8 @@ void WinMTROptions::OnOK()
     dontFragment = m_checkDF.GetCheck();
     lookupAsn = m_checkAsn.GetCheck();
     lookupPublicInfo = m_checkPublicInfo.GetCheck();
+    useIPv4 = newUseIPv4;
+    useIPv6 = newUseIPv6;
     CDialog::OnOK();
 }
 

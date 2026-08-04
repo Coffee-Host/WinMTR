@@ -81,6 +81,7 @@ private:
     void AdjustColumnWidths();
     void AdjustWindowToContent();
     void StretchLastColumnToFill();
+    void SetHostControlTracing(bool tracing);
     void SetTraceStatus(const CString& text);
     void SetPublicInfoPlaceholders(UINT ipTextId);
     void UpdatePublicInfoSummary(const IpNetworkDetails& details);
@@ -107,6 +108,7 @@ private:
     CStatic m_publicAsnSummary;
     CStatic m_publicIspSummary;
     CComboBox m_comboHost;
+    CEdit m_traceHostDisplay;
     CListCtrl m_listMTR;
     CStatic m_staticS;
     CStatic m_staticJ;
@@ -133,6 +135,8 @@ private:
     BOOL dontFragment;
     BOOL lookupAsn;
     BOOL lookupPublicInfo;
+    BOOL useIPv4;
+    BOOL useIPv6;
     bool hasIntervalFromCmdLine;
     bool hasPingSizeFromCmdLine;
     bool hasMaxLRUFromCmdLine;
