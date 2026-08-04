@@ -137,6 +137,7 @@
 #define IDC_CHECK_IPV4                  1052
 #define IDC_CHECK_IPV6                  1053
 #define IDC_TRACE_HOST_DISPLAY          1054
+#define IDC_STATIC_ACTIONS              1055
 
 // Next default values for new objects
 // 

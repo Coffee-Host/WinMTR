@@ -248,6 +248,7 @@ void WinMTRDialog::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_COMBO_HOST, m_comboHost);
     DDX_Control(pDX, IDC_LIST_MTR, m_listMTR);
     DDX_Control(pDX, IDC_STATICS, m_staticS);
+    DDX_Control(pDX, IDC_STATIC_ACTIONS, m_staticActions);
     DDX_Control(pDX, IDC_STATICJ, m_staticJ);
 }
 
@@ -371,8 +372,8 @@ BOOL WinMTRDialog::OnInitDialog()
     }
     m_publicIpSummary.SetFont(&m_codeFont);
     m_publicHostnameSummary.SetFont(&m_codeFont);
-    m_publicCountrySummary.SetFont(&m_codeFont);
-    m_publicCitySummary.SetFont(&m_codeFont);
+    m_publicCountrySummary.SetFont(GetFont());
+    m_publicCitySummary.SetFont(GetFont());
     m_publicAsnSummary.SetFont(&m_codeFont);
     m_publicIspSummary.SetFont(&m_codeFont);
     m_buttonNetworkDetails.SetWindowText(LoadText(IDS_BUTTON_NETWORK_DETAILS));
@@ -387,7 +388,7 @@ BOOL WinMTRDialog::OnInitDialog()
     const UINT footerIndicators[2] = { IDS_STATUS_READY, IDS_COMPANY_LINK };
     footerStatus.SetIndicators(footerIndicators, 2);
     footerStatus.SetPaneInfo(0, footerStatus.GetItemID(0), SBPS_STRETCH, 0);
-    footerStatus.SetFont(&m_codeFont);
+    footerStatus.SetFont(GetFont());
     const CString companyName = LoadText(IDS_COMPANY_LINK);
     CClientDC footerDc(&footerStatus);
     CFont* previousFooterFont = footerDc.SelectObject(&m_codeFont);
@@ -1178,10 +1179,12 @@ void WinMTRDialog::AdjustWindowToContent()
         m_publicHostnameSummary.GetWindowText(text);
         const int hostnameWidth = std::max(110,
             static_cast<int>(dc.GetTextExtent(text).cx) + 8);
+        dc.SelectObject(GetFont());
         m_publicCountrySummary.GetWindowText(text);
         const int countryWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
         m_publicCitySummary.GetWindowText(text);
         const int cityWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        dc.SelectObject(&m_codeFont);
         m_publicAsnSummary.GetWindowText(text);
         const int asnWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
         const int connectionWidth = std::max(150, std::max(ipWidth, hostnameWidth));
@@ -1380,20 +1383,30 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
         footerStatus.GetWindowRect(footer);
         footerHeight = static_cast<int>(footer.Height());
     }
+    const bool hasRows = ::IsWindow(m_listMTR.m_hWnd) &&
+        m_listMTR.GetItemCount() > 0;
     CRect item;
-    if (::IsWindow(m_staticS.m_hWnd)) {
-        m_staticS.GetWindowRect(&item);
-        ScreenToClient(&item);
-        m_staticS.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 8,
-            item.Height(), SWP_NOMOVE | SWP_NOZORDER);
-    }
     if (::IsWindow(m_staticJ.m_hWnd)) {
         m_staticJ.GetWindowRect(&item);
         ScreenToClient(&item);
+        int groupHeight = item.Height();
+        if (!hasRows && ::IsWindow(m_staticS.m_hWnd)) {
+            CRect topGroup;
+            m_staticS.GetWindowRect(topGroup);
+            ScreenToClient(topGroup);
+            const int sectionGap = item.top - topGroup.bottom;
+            CRect dialogUnit(0, 0, 0, 1);
+            ::MapDialogRect(GetSafeHwnd(), &dialogUnit);
+            const int visualOffset = std::max(1,
+                static_cast<int>(dialogUnit.bottom));
+            groupHeight = std::max(1,
+                static_cast<int>(client.Height() - footerHeight -
+                    sectionGap - visualOffset - item.top));
+        }
         m_staticJ.SetWindowPos(NULL, 0, 0, client.Width() - item.left - 8,
-            item.Height(), SWP_NOMOVE | SWP_NOZORDER);
+            groupHeight, SWP_NOMOVE | SWP_NOZORDER);
     }
-    if (::IsWindow(m_listMTR.m_hWnd) && m_listMTR.GetItemCount() > 0) {
+    if (hasRows) {
         m_listMTR.GetWindowRect(&item);
         ScreenToClient(&item);
         m_listMTR.ShowWindow(SW_SHOW);
@@ -1428,11 +1441,14 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
         ScreenToClient(reset);
         ScreenToClient(host);
         const int gap = 6;
-        const int resetLeft = client.Width() - 14 - reset.Width();
-        const int reportLeft = resetLeft - gap - report.Width();
-        const int captureLeft = reportLeft - gap - capture.Width();
+        const int reportLeft = client.Width() - 14 - report.Width();
+        const int resetLeft = reportLeft - gap - reset.Width();
+        const int captureLeft = resetLeft - gap - capture.Width();
         const int optionsLeft = captureLeft - gap - options.Width();
-        const int startLeft = optionsLeft - gap - start.Width();
+        const int groupPadding = 6;
+        const int groupGap = 6;
+        const int actionsLeft = optionsLeft - groupPadding;
+        const int startLeft = actionsLeft - groupGap - groupPadding - start.Width();
         const int hostWidth = std::max(60,
             startLeft - gap - static_cast<int>(host.left));
         m_comboHost.SetWindowPos(NULL, 0, 0, hostWidth, host.Height(),
@@ -1451,6 +1467,22 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
             SWP_NOSIZE | SWP_NOZORDER);
         m_buttonCapture.SetWindowPos(NULL, captureLeft, capture.top, 0, 0,
             SWP_NOSIZE | SWP_NOZORDER);
+
+        if (::IsWindow(m_staticS.m_hWnd)) {
+            CRect group;
+            m_staticS.GetWindowRect(group);
+            ScreenToClient(group);
+            const int groupRight = startLeft + start.Width() + groupPadding;
+            m_staticS.SetWindowPos(NULL, 0, 0, groupRight - group.left,
+                group.Height(), SWP_NOMOVE | SWP_NOZORDER);
+        }
+        if (::IsWindow(m_staticActions.m_hWnd)) {
+            CRect group;
+            m_staticActions.GetWindowRect(group);
+            ScreenToClient(group);
+            m_staticActions.SetWindowPos(NULL, actionsLeft, group.top,
+                client.Width() - 8 - actionsLeft, group.Height(), SWP_NOZORDER);
+        }
     }
     if (::IsWindow(m_publicIpSummary.m_hWnd) &&
         ::IsWindow(m_publicHostnameSummary.m_hWnd) &&
@@ -1493,10 +1525,12 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
         const int ipWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
         m_publicHostnameSummary.GetWindowText(text);
         const int hostnameWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        dc.SelectObject(GetFont());
         m_publicCountrySummary.GetWindowText(text);
         const int countryWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
         m_publicCitySummary.GetWindowText(text);
         const int cityWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
+        dc.SelectObject(&m_codeFont);
         m_publicAsnSummary.GetWindowText(text);
         const int asnWidth = static_cast<int>(dc.GetTextExtent(text).cx) + 8;
         dc.SelectObject(previous);

@@ -111,6 +111,7 @@ private:
     CEdit m_traceHostDisplay;
     CListCtrl m_listMTR;
     CStatic m_staticS;
+    CStatic m_staticActions;
     CStatic m_staticJ;
     CFont m_codeFont;
     CFont m_tableFont;
