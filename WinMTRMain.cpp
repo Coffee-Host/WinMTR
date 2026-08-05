@@ -41,6 +41,13 @@ bool EqualsOption(const wchar_t* value, const wchar_t* shortName,
 
 BOOL WinMTRMain::InitInstance()
 {
+    INITCOMMONCONTROLSEX commonControls = {};
+    commonControls.dwSize = sizeof(commonControls);
+    commonControls.dwICC = ICC_WIN95_CLASSES | ICC_STANDARD_CLASSES |
+        ICC_LINK_CLASS;
+    InitCommonControlsEx(&commonControls);
+
+    CWinApp::InitInstance();
     SetProcessDPIAware();
     if (!AfxSocketInit()) {
         AfxMessageBox(IDP_SOCKETS_INIT_FAILED);

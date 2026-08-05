@@ -2,6 +2,7 @@
 #define WINMTRNET_H_
 
 #include <atomic>
+#include <deque>
 #include <mutex>
 #include <stdint.h>
 #include <string>
@@ -13,6 +14,7 @@ struct TraceConfig {
     int pingSize;
     int maxHops;
     int timeoutMs;
+    int graceMs;
     int cycles;
     int tos;
     int bitPattern;
@@ -32,6 +34,7 @@ struct HopSnapshot {
     std::string isp;
     int xmit;
     int returned;
+    int dropped;
     int lossPercent;
     int best;
     int average;
@@ -63,6 +66,10 @@ public:
         const std::string& asn, const std::string& isp);
     void RecordSent(int at);
     void RecordReply(int at, int roundTripTime);
+    void RecordTimeout(int at);
+    void QueueResolve(int at, const sockaddr_storage& address,
+        const TraceConfig& config);
+    void FinalizeInFlight();
     bool ShouldProbeHop(int ttl) const;
 
     // Compatibility accessors used by the existing dialogs and exporters.
@@ -85,6 +92,7 @@ private:
         uint64_t jitterTotal;
         int xmit;
         int returned;
+        int inFlight;
         int last;
         int best;
         int worst;
@@ -95,15 +103,30 @@ private:
         char isp[192];
     };
 
+    struct ResolveRequest {
+        int index;
+        sockaddr_storage address;
+        TraceConfig config;
+        uint64_t generation;
+    };
+
     bool SameAddress(const sockaddr_storage& left, const sockaddr_storage& right) const;
+    static unsigned __stdcall ResolverThreadEntry(void* parameter);
+    void ResolverLoop();
 
     mutable std::mutex hostMutex;
+    std::mutex resolverMutex;
+    std::deque<ResolveRequest> resolverQueue;
     NetHost host[64];
     sockaddr_storage remoteAddress;
     int configuredMaxHops;
     std::atomic<int> destinationHop;
     std::atomic<bool> tracing;
+    std::atomic<uint64_t> traceGeneration;
     HANDLE stopEvent;
+    HANDLE resolverEvent;
+    HANDLE resolverStopEvent;
+    HANDLE resolverThread;
 };
 
 #endif // WINMTRNET_H_

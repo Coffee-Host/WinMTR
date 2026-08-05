@@ -80,6 +80,7 @@ private:
     void SaveConfiguration();
     void AdjustColumnWidths();
     void AdjustWindowToContent();
+    int CalculateMinimumWindowWidth();
     void StretchLastColumnToFill();
     void SetHostControlTracing(bool tracing);
     void SetTraceStatus(const CString& text);

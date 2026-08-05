@@ -1191,6 +1191,49 @@ void WinMTRDialog::AdjustColumnWidths()
     dc.SelectObject(previous);
 }
 
+int WinMTRDialog::CalculateMinimumWindowWidth()
+{
+    if (!::IsWindow(m_comboHost.GetSafeHwnd()) ||
+        !::IsWindow(m_buttonStart.GetSafeHwnd()) ||
+        !::IsWindow(m_buttonOptions.GetSafeHwnd()) ||
+        !::IsWindow(m_buttonReset.GetSafeHwnd()) ||
+        !::IsWindow(m_buttonCapture.GetSafeHwnd()) ||
+        !::IsWindow(m_buttonReportMenu.GetSafeHwnd())) {
+        return minimumWindowSize.cx;
+    }
+
+    CRect host;
+    CRect start;
+    CRect options;
+    CRect reset;
+    CRect capture;
+    CRect report;
+    m_comboHost.GetWindowRect(host);
+    m_buttonStart.GetWindowRect(start);
+    m_buttonOptions.GetWindowRect(options);
+    m_buttonReset.GetWindowRect(reset);
+    m_buttonCapture.GetWindowRect(capture);
+    m_buttonReportMenu.GetWindowRect(report);
+    ScreenToClient(host);
+
+    const int controlGap = 6;
+    const int groupPadding = 6;
+    const int groupGap = 6;
+    const int rightMargin = 14;
+    const int minimumHostWidth = 60;
+    const int actionButtonsWidth = options.Width() + reset.Width() +
+        capture.Width() + report.Width() + 3 * controlGap;
+    const int minimumClientWidth = host.left + minimumHostWidth + controlGap +
+        start.Width() + 2 * groupPadding + groupGap +
+        actionButtonsWidth + rightMargin;
+
+    CRect client;
+    CRect window;
+    GetClientRect(client);
+    GetWindowRect(window);
+    return minimumClientWidth + window.Width() - client.Width();
+}
+
 void WinMTRDialog::AdjustWindowToContent()
 {
     if (adjustingWindow || !::IsWindow(m_listMTR.GetSafeHwnd()))
@@ -1240,7 +1283,7 @@ void WinMTRDialog::AdjustWindowToContent()
         contentWidth = std::max(contentWidth, summaryWidth);
     }
 
-    int contentHeight = 0;
+    int requiredListHeight = 0;
     if (hasRows) {
         int rowHeight = 18;
         CRect row;
@@ -1254,7 +1297,13 @@ void WinMTRDialog::AdjustWindowToContent()
             headerHeight = std::max(headerHeight,
                 static_cast<int>(headerRect.Height()));
         }
-        contentHeight = headerHeight + itemCount * rowHeight + 4;
+        CRect listClient;
+        CRect listWindow;
+        m_listMTR.GetClientRect(listClient);
+        m_listMTR.GetWindowRect(listWindow);
+        const int listFrameHeight = listWindow.Height() - listClient.Height();
+        requiredListHeight = headerHeight + itemCount * rowHeight +
+            listFrameHeight + 2;
     }
 
     CRect client;
@@ -1265,8 +1314,24 @@ void WinMTRDialog::AdjustWindowToContent()
     int desiredWidth = contentWidth > 0
         ? contentWidth + nonClientWidth + 16
         : minimumWindowSize.cx;
-    int desiredHeight = minimumWindowSize.cy + contentHeight;
-    desiredWidth = std::max(desiredWidth, static_cast<int>(minimumWindowSize.cx));
+    int desiredHeight = minimumWindowSize.cy;
+    if (hasRows) {
+        CRect listPosition;
+        m_listMTR.GetWindowRect(listPosition);
+        ScreenToClient(listPosition);
+        int footerHeight = 0;
+        if (::IsWindow(footerStatus.GetSafeHwnd())) {
+            CRect footer;
+            footerStatus.GetWindowRect(footer);
+            footerHeight = footer.Height();
+        }
+        const int nonClientHeight = current.Height() - client.Height();
+        desiredHeight = nonClientHeight + listPosition.top +
+            requiredListHeight + footerHeight + 8;
+    }
+    const int minimumWidth = std::max(static_cast<int>(minimumWindowSize.cx),
+        CalculateMinimumWindowWidth());
+    desiredWidth = std::max(desiredWidth, minimumWidth);
     desiredHeight = std::max(desiredHeight, static_cast<int>(minimumWindowSize.cy));
 
     MONITORINFO monitor = {};
@@ -1292,8 +1357,17 @@ void WinMTRDialog::AdjustWindowToContent()
         current.left != left || current.top != top) {
         adjustingWindow = true;
         SetWindowPos(NULL, left, top, desiredWidth, desiredHeight,
-            SWP_NOACTIVATE | SWP_NOZORDER);
+            SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOZORDER);
         adjustingWindow = false;
+
+        // A second layout after the outer resize prevents child controls from
+        // retaining an intermediate position or copied resize artifacts.
+        CRect resizedClient;
+        GetClientRect(resizedClient);
+        SendMessage(WM_SIZE, SIZE_RESTORED,
+            MAKELPARAM(resizedClient.Width(), resizedClient.Height()));
+        RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_ERASE |
+            RDW_ALLCHILDREN | RDW_UPDATENOW);
     }
     StretchLastColumnToFill();
 }
@@ -1407,9 +1481,11 @@ void WinMTRDialog::OnSizing(UINT side, LPRECT rectangle)
         }
         minimumHeight += headerHeight + rowHeight + 4;
     }
-    if (minimumWindowSize.cx > 0 &&
-        rectangle->right - rectangle->left < minimumWindowSize.cx)
-        rectangle->right = rectangle->left + minimumWindowSize.cx;
+    const int minimumWidth = std::max(static_cast<int>(minimumWindowSize.cx),
+        CalculateMinimumWindowWidth());
+    if (minimumWidth > 0 &&
+        rectangle->right - rectangle->left < minimumWidth)
+        rectangle->right = rectangle->left + minimumWidth;
     if (minimumHeight > 0 && rectangle->bottom - rectangle->top < minimumHeight)
         rectangle->bottom = rectangle->top + minimumHeight;
 }
@@ -1417,6 +1493,22 @@ void WinMTRDialog::OnSizing(UINT side, LPRECT rectangle)
 void WinMTRDialog::OnSize(UINT type, int width, int height)
 {
     CDialog::OnSize(type, width, height);
+    if (type != SIZE_MINIMIZED && !adjustingWindow) {
+        CRect window;
+        GetWindowRect(window);
+        const int minimumWidth = std::max(
+            static_cast<int>(minimumWindowSize.cx),
+            CalculateMinimumWindowWidth());
+        if (minimumWidth > 0 && window.Width() < minimumWidth) {
+            adjustingWindow = true;
+            SetWindowPos(NULL, 0, 0, minimumWidth, window.Height(),
+                SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOZORDER);
+            adjustingWindow = false;
+            RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_ERASE |
+                RDW_ALLCHILDREN | RDW_UPDATENOW);
+            return;
+        }
+    }
     CRect client;
     GetClientRect(&client);
     int footerHeight = 0;
