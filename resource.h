@@ -82,6 +82,7 @@
 #define IDS_NETWORK_SUMMARY_ISP_FORMAT  189
 #define IDS_BUTTON_NETWORK_DETAILS      190
 #define IDS_ERROR_ADDRESS_FAMILY_REQUIRED 191
+#define IDS_WARNING_SHARE_INCOMPLETE    192
 #define IDC_EDIT_HOST                   1000
 #define IDC_LIST_MTR                    1001
 #define ID_RESTART                      1002

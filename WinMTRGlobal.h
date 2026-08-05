@@ -59,6 +59,7 @@
 #define DEFAULT_ASN_LOOKUP      TRUE
 #define DEFAULT_IPV4            TRUE
 #define DEFAULT_IPV6            TRUE
+#define RECOMMENDED_SHARE_PACKETS 100
 
 #define SAVED_PINGS 100
 #define MaxHost 256

@@ -90,6 +90,7 @@ private:
     CString Utf8ToLocal(const std::string& value) const;
     void CopyTextToClipboard(const std::string& text) const;
     void SaveReport(const std::string& text, LPCTSTR extension, LPCTSTR filter) const;
+    bool ConfirmShareReady() const;
     std::string BuildTextReport() const;
     std::string BuildHtmlReport() const;
     std::string BuildCsvReport() const;

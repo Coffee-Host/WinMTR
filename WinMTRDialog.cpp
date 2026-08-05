@@ -1060,12 +1060,52 @@ void WinMTRDialog::SaveReport(const std::string& text, LPCTSTR extension,
     fclose(file);
 }
 
-void WinMTRDialog::OnCTTC() { CopyTextToClipboard(BuildTextReport()); }
-void WinMTRDialog::OnCHTC() { CopyTextToClipboard(BuildHtmlReport()); }
-void WinMTRDialog::OnEXPT() { SaveReport(BuildTextReport(), "txt", LoadText(IDS_FILTER_TEXT)); }
-void WinMTRDialog::OnEXPH() { SaveReport(BuildHtmlReport(), "html", LoadText(IDS_FILTER_HTML)); }
-void WinMTRDialog::OnEXPC() { SaveReport(BuildCsvReport(), "csv", LoadText(IDS_FILTER_CSV)); }
-void WinMTRDialog::OnEXPJ() { SaveReport(BuildJsonReport(), "json", LoadText(IDS_FILTER_JSON)); }
+bool WinMTRDialog::ConfirmShareReady() const
+{
+    if (network->GetHopSnapshot(0).xmit >= RECOMMENDED_SHARE_PACKETS)
+        return true;
+    CString message;
+    message.Format(LoadText(IDS_WARNING_SHARE_INCOMPLETE),
+        RECOMMENDED_SHARE_PACKETS);
+    return AfxMessageBox(message,
+        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) == IDYES;
+}
+
+void WinMTRDialog::OnCTTC()
+{
+    if (ConfirmShareReady())
+        CopyTextToClipboard(BuildTextReport());
+}
+
+void WinMTRDialog::OnCHTC()
+{
+    if (ConfirmShareReady())
+        CopyTextToClipboard(BuildHtmlReport());
+}
+
+void WinMTRDialog::OnEXPT()
+{
+    if (ConfirmShareReady())
+        SaveReport(BuildTextReport(), "txt", LoadText(IDS_FILTER_TEXT));
+}
+
+void WinMTRDialog::OnEXPH()
+{
+    if (ConfirmShareReady())
+        SaveReport(BuildHtmlReport(), "html", LoadText(IDS_FILTER_HTML));
+}
+
+void WinMTRDialog::OnEXPC()
+{
+    if (ConfirmShareReady())
+        SaveReport(BuildCsvReport(), "csv", LoadText(IDS_FILTER_CSV));
+}
+
+void WinMTRDialog::OnEXPJ()
+{
+    if (ConfirmShareReady())
+        SaveReport(BuildJsonReport(), "json", LoadText(IDS_FILTER_JSON));
+}
 
 void WinMTRDialog::OnReportMenu()
 {
@@ -1090,6 +1130,8 @@ void WinMTRDialog::OnReportMenu()
 
 void WinMTRDialog::OnCaptureScreenshot()
 {
+    if (!ConfirmShareReady())
+        return;
     CRect window;
     GetWindowRect(window);
     const int width = window.Width();
@@ -1442,9 +1484,9 @@ void WinMTRDialog::OnSize(UINT type, int width, int height)
         ScreenToClient(host);
         const int gap = 6;
         const int reportLeft = client.Width() - 14 - report.Width();
-        const int resetLeft = reportLeft - gap - reset.Width();
-        const int captureLeft = resetLeft - gap - capture.Width();
-        const int optionsLeft = captureLeft - gap - options.Width();
+        const int captureLeft = reportLeft - gap - capture.Width();
+        const int resetLeft = captureLeft - gap - reset.Width();
+        const int optionsLeft = resetLeft - gap - options.Width();
         const int groupPadding = 6;
         const int groupGap = 6;
         const int actionsLeft = optionsLeft - groupPadding;
