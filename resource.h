@@ -139,6 +139,11 @@
 #define IDC_CHECK_IPV6                  1053
 #define IDC_TRACE_HOST_DISPLAY          1054
 #define IDC_STATIC_ACTIONS              1055
+#define IDC_EDIT_FIRST_TTL              1056
+#define IDC_EDIT_DUE_TTL                1057
+#define IDC_EDIT_MAX_UNKNOWN            1058
+#define IDC_EDIT_MAX_DISPLAY_PATHS      1059
+#define IDC_EDIT_CACHE_SECONDS          1060
 
 // Next default values for new objects
 // 
@@ -146,7 +151,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1027
+#define _APS_NEXT_CONTROL_VALUE         1061
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

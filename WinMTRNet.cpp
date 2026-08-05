@@ -14,6 +14,9 @@
 namespace {
 
 const int MAX_TRACE_HOPS = 64;
+const int MAX_TRACE_RESPONDERS = 128;
+const int RESOLVER_WORKERS = 2;
+const size_t MAX_RESOLVER_CACHE_ENTRIES = 1024;
 
 struct AsyncTraceState {
     AsyncTraceState(WinMTRNet* owner, const sockaddr_storage& target,
@@ -34,6 +37,7 @@ struct AsyncTraceState {
 struct AsyncProbeContext {
     AsyncTraceState* trace;
     int index;
+    uint64_t sequence;
     bool ipv6;
     std::vector<unsigned char> request;
     std::vector<unsigned char> reply;
@@ -92,7 +96,8 @@ void CompleteProbe(AsyncProbeContext* context)
     if (replyCount > 0 && IsTraceReplyStatus(status)) {
         context->trace->network->RecordReply(context->index,
             static_cast<int>(roundTripTime));
-        if (context->trace->network->SetAddress(context->index, replyAddress)) {
+        if (context->trace->network->SetAddress(context->index, replyAddress,
+            context->sequence)) {
             context->trace->network->QueueResolve(context->index, replyAddress,
                 context->trace->config);
         }
@@ -118,6 +123,7 @@ bool SubmitProbe(AsyncTraceState& trace, int index, int probeOrdinal)
 
     context->trace = &trace;
     context->index = index;
+    context->sequence = static_cast<uint64_t>(probeOrdinal);
     context->ipv6 = trace.destination.ss_family == AF_INET6;
     context->request.resize(static_cast<size_t>(trace.config.pingSize));
     const int pattern = trace.config.bitPattern < 0
@@ -189,7 +195,8 @@ void ResolveHopValues(const sockaddr_storage& address, const TraceConfig& config
 
 TraceConfig::TraceConfig()
     : intervalMs(1000), pingSize(64), maxHops(30), timeoutMs(3000),
-      graceMs(5000), cycles(0), tos(0), bitPattern(32), useDns(true),
+      graceMs(5000), firstTtl(1), dueTtl(0), maxUnknown(5),
+      cacheSeconds(0), cycles(0), tos(0), bitPattern(32), useDns(true),
       lookupAsn(true), dontFragment(true)
 {
 }
@@ -201,20 +208,23 @@ HopSnapshot::HopSnapshot()
 }
 
 WinMTRNet::WinMTRNet()
-    : configuredMaxHops(30), destinationHop(MAX_TRACE_HOPS + 1),
-      tracing(false), traceGeneration(0),
+    : configuredMaxHops(30), configuredFirstTtl(1), configuredDueTtl(0),
+      destinationHop(MAX_TRACE_HOPS + 1), highestProbeHop(1),
+      tracing(false), traceGeneration(0), lastDestinationSequence(0),
       stopEvent(CreateEvent(NULL, TRUE, FALSE, NULL)),
-      resolverEvent(CreateEvent(NULL, FALSE, FALSE, NULL)),
+      resolverSemaphore(CreateSemaphore(NULL, 0, 4096, NULL)),
       resolverStopEvent(CreateEvent(NULL, TRUE, FALSE, NULL)),
-      resolverThread(NULL)
+      resolverThreads()
 {
     ZeroMemory(&remoteAddress, sizeof(remoteAddress));
     ResetHops();
-    if (resolverEvent && resolverStopEvent) {
-        const uintptr_t thread = _beginthreadex(NULL, 0, ResolverThreadEntry,
-            this, 0, NULL);
-        if (thread)
-            resolverThread = reinterpret_cast<HANDLE>(thread);
+    if (resolverSemaphore && resolverStopEvent) {
+        for (int i = 0; i < RESOLVER_WORKERS; ++i) {
+            const uintptr_t thread = _beginthreadex(NULL, 0,
+                ResolverThreadEntry, this, 0, NULL);
+            if (thread)
+                resolverThreads.push_back(reinterpret_cast<HANDLE>(thread));
+        }
     }
 }
 
@@ -223,14 +233,14 @@ WinMTRNet::~WinMTRNet()
     StopTrace();
     if (resolverStopEvent)
         SetEvent(resolverStopEvent);
-    if (resolverThread) {
-        WaitForSingleObject(resolverThread, INFINITE);
-        CloseHandle(resolverThread);
-    }
+    for (size_t i = 0; i < resolverThreads.size(); ++i)
+        WaitForSingleObject(resolverThreads[i], INFINITE);
+    for (size_t i = 0; i < resolverThreads.size(); ++i)
+        CloseHandle(resolverThreads[i]);
     if (resolverStopEvent)
         CloseHandle(resolverStopEvent);
-    if (resolverEvent)
-        CloseHandle(resolverEvent);
+    if (resolverSemaphore)
+        CloseHandle(resolverSemaphore);
     if (stopEvent)
         CloseHandle(stopEvent);
 }
@@ -249,19 +259,26 @@ void WinMTRNet::DoTrace(const sockaddr_storage& address, const TraceConfig& conf
     activeConfig.graceMs = std::max(0, activeConfig.graceMs);
     activeConfig.maxHops = std::max(1,
         std::min(activeConfig.maxHops, MAX_TRACE_HOPS));
+    activeConfig.firstTtl = std::max(1,
+        std::min(activeConfig.firstTtl, activeConfig.maxHops));
+    activeConfig.dueTtl = std::max(0,
+        std::min(activeConfig.dueTtl, activeConfig.maxHops));
+    activeConfig.maxUnknown = std::max(1,
+        std::min(activeConfig.maxUnknown, MAX_TRACE_HOPS));
+    activeConfig.cacheSeconds = std::max(0, activeConfig.cacheSeconds);
 
     {
         std::lock_guard<std::mutex> lock(hostMutex);
         ZeroMemory(host, sizeof(host));
         remoteAddress = address;
         configuredMaxHops = activeConfig.maxHops;
-    }
-    {
-        std::lock_guard<std::mutex> lock(resolverMutex);
-        resolverQueue.clear();
+        configuredFirstTtl = activeConfig.firstTtl;
+        configuredDueTtl = activeConfig.dueTtl;
     }
     traceGeneration.fetch_add(1);
     destinationHop.store(MAX_TRACE_HOPS + 1);
+    highestProbeHop.store(activeConfig.firstTtl);
+    lastDestinationSequence.store(0);
     ResetEvent(stopEvent);
     tracing.store(true);
 
@@ -278,24 +295,15 @@ void WinMTRNet::DoTrace(const sockaddr_storage& address, const TraceConfig& conf
         return;
     }
 
-    int batchAt = 0;
+    int batchAt = activeConfig.firstTtl - 1;
+    int batchHostCount = std::min(10,
+        activeConfig.maxHops - activeConfig.firstTtl + 1);
     int completedCycles = 0;
     int probeOrdinal = 0;
     bool normalCompletion = false;
     ULONGLONG nextSend = GetTickCount64();
 
     while (tracing.load()) {
-        const int routeHops = std::max(1, GetMax());
-        if (batchAt >= routeHops) {
-            batchAt = 0;
-            ++completedCycles;
-            if (activeConfig.cycles > 0 &&
-                completedCycles >= activeConfig.cycles) {
-                normalCompletion = true;
-                break;
-            }
-        }
-
         const ULONGLONG now = GetTickCount64();
         if (now < nextSend) {
             const ULONGLONG remaining = nextSend - now;
@@ -304,12 +312,27 @@ void WinMTRNet::DoTrace(const sockaddr_storage& address, const TraceConfig& conf
             continue;
         }
 
-        SubmitProbe(trace, batchAt, probeOrdinal++);
-        ++batchAt;
+        if (!IsHopCached(batchAt, activeConfig.cacheSeconds))
+            SubmitProbe(trace, batchAt, probeOrdinal++);
 
-        const int currentHops = std::max(1, GetMax());
+        int nextBatchHostCount = batchHostCount;
+        if (ShouldEndBatch(batchAt, activeConfig, nextBatchHostCount)) {
+            batchHostCount = std::max(1, nextBatchHostCount);
+            highestProbeHop.store(activeConfig.firstTtl - 1 +
+                batchHostCount);
+            ++completedCycles;
+            if (activeConfig.cycles > 0 &&
+                completedCycles >= activeConfig.cycles) {
+                normalCompletion = true;
+                break;
+            }
+            batchAt = activeConfig.firstTtl - 1;
+        } else {
+            ++batchAt;
+        }
+
         const DWORD delta = static_cast<DWORD>(std::max(1,
-            activeConfig.intervalMs / currentHops));
+            activeConfig.intervalMs / batchHostCount));
         if (now > nextSend + static_cast<ULONGLONG>(activeConfig.intervalMs))
             nextSend = now + delta;
         else
@@ -336,7 +359,7 @@ void WinMTRNet::DoTrace(const sockaddr_storage& address, const TraceConfig& conf
             SleepEx(1, TRUE);
     }
 
-    FinalizeInFlight();
+    FinalizeTransit();
     IcmpCloseHandle(trace.icmp);
     CloseHandle(trace.pendingZeroEvent);
     tracing.store(false);
@@ -359,23 +382,58 @@ bool WinMTRNet::WaitForStop(DWORD timeoutMs) const
     return stopEvent && WaitForSingleObject(stopEvent, timeoutMs) == WAIT_OBJECT_0;
 }
 
-bool WinMTRNet::SetAddress(int at, const sockaddr_storage& address)
+bool WinMTRNet::SetAddress(int at, const sockaddr_storage& address,
+    uint64_t sequence)
 {
     if (at < 0 || at >= MAX_TRACE_HOPS)
         return false;
     std::lock_guard<std::mutex> lock(hostMutex);
-    if (host[at].hasAddress)
-        return false;
-    host[at].address = address;
-    host[at].hasAddress = true;
-    if (SameAddress(address, remoteAddress)) {
-        int knownHop = destinationHop.load();
-        const int discoveredHop = at + 1;
-        while (discoveredHop < knownHop &&
-            !destinationHop.compare_exchange_weak(knownHop, discoveredHop)) {
+    NetHost& current = host[at];
+    int responder = 0;
+    for (; responder < current.responderCount; ++responder) {
+        if (SameAddress(current.responders[responder].address, address))
+            break;
+    }
+    const bool isNewResponder = responder == current.responderCount;
+    const bool canStoreResponder = responder < MAX_TRACE_RESPONDERS;
+    if (isNewResponder && canStoreResponder) {
+        Responder& path = current.responders[responder];
+        path.hasAddress = true;
+        path.address = address;
+        ++current.responderCount;
+    }
+
+    const bool isDestination = SameAddress(address, remoteAddress);
+    const bool useAsLatest = !isDestination || configuredDueTtl == 0 ||
+        at + 1 >= configuredDueTtl;
+    const bool changedLatest = useAsLatest &&
+        (!current.hasAddress || !SameAddress(current.address, address));
+    if (changedLatest) {
+        current.address = address;
+        current.hasAddress = true;
+        if (responder < current.responderCount) {
+            const Responder& path = current.responders[responder];
+            strncpy_s(current.name, path.name, _TRUNCATE);
+            strncpy_s(current.country, path.country, _TRUNCATE);
+            strncpy_s(current.asn, path.asn, _TRUNCATE);
+            strncpy_s(current.isp, path.isp, _TRUNCATE);
+        } else {
+            current.name[0] = '\0';
+            current.country[0] = '\0';
+            current.asn[0] = '\0';
+            current.isp[0] = '\0';
         }
     }
-    return true;
+
+    if (isDestination && useAsLatest) {
+        uint64_t previous = lastDestinationSequence.load();
+        while (sequence >= previous &&
+            !lastDestinationSequence.compare_exchange_weak(previous, sequence)) {
+        }
+        if (sequence >= previous)
+            destinationHop.store(at + 1);
+    }
+    return isNewResponder && (canStoreResponder || changedLatest);
 }
 
 bool WinMTRNet::ShouldProbeHop(int ttl) const
@@ -383,16 +441,71 @@ bool WinMTRNet::ShouldProbeHop(int ttl) const
     return ttl > 0 && ttl <= destinationHop.load();
 }
 
-void WinMTRNet::SetIdentity(int at, const std::string& name,
-    const std::string& country, const std::string& asn, const std::string& isp)
+bool WinMTRNet::IsHopCached(int at, int seconds) const
+{
+    if (seconds <= 0 || at < 0 || at >= MAX_TRACE_HOPS)
+        return false;
+    std::lock_guard<std::mutex> lock(hostMutex);
+    const NetHost& current = host[at];
+    if (!current.up || current.seenAt == 0)
+        return false;
+    const ULONGLONG age = GetTickCount64() - current.seenAt;
+    return age <= static_cast<ULONGLONG>(seconds) * 1000;
+}
+
+bool WinMTRNet::ShouldEndBatch(int at, const TraceConfig& config,
+    int& batchHostCount) const
+{
+    const int first = config.firstTtl - 1;
+    if (at < first)
+        return false;
+    std::lock_guard<std::mutex> lock(hostMutex);
+    int unknown = 0;
+    for (int index = first; index < at; ++index) {
+        if (!host[index].hasAddress) {
+            ++unknown;
+        } else if (SameAddress(host[index].address, remoteAddress) &&
+            config.dueTtl <= index + 1) {
+            batchHostCount = index - first + 1;
+            return true;
+        }
+    }
+    const bool reachedDestination = host[at].hasAddress &&
+        SameAddress(host[at].address, remoteAddress) &&
+        config.dueTtl <= at + 1;
+    if (reachedDestination ||
+        (unknown > config.maxUnknown && config.dueTtl <= at + 1) ||
+        at >= config.maxHops - 1) {
+        batchHostCount = at - first + 1;
+        return true;
+    }
+    return false;
+}
+
+void WinMTRNet::SetIdentity(int at, const sockaddr_storage& address,
+    const std::string& name, const std::string& country,
+    const std::string& asn, const std::string& isp)
 {
     if (at < 0 || at >= MAX_TRACE_HOPS)
         return;
     std::lock_guard<std::mutex> lock(hostMutex);
-    strncpy_s(host[at].name, name.c_str(), _TRUNCATE);
-    strncpy_s(host[at].country, country.c_str(), _TRUNCATE);
-    strncpy_s(host[at].asn, asn.c_str(), _TRUNCATE);
-    strncpy_s(host[at].isp, isp.c_str(), _TRUNCATE);
+    NetHost& current = host[at];
+    for (int i = 0; i < current.responderCount; ++i) {
+        Responder& path = current.responders[i];
+        if (!SameAddress(path.address, address))
+            continue;
+        strncpy_s(path.name, name.c_str(), _TRUNCATE);
+        strncpy_s(path.country, country.c_str(), _TRUNCATE);
+        strncpy_s(path.asn, asn.c_str(), _TRUNCATE);
+        strncpy_s(path.isp, isp.c_str(), _TRUNCATE);
+        break;
+    }
+    if (current.hasAddress && SameAddress(current.address, address)) {
+        strncpy_s(current.name, name.c_str(), _TRUNCATE);
+        strncpy_s(current.country, country.c_str(), _TRUNCATE);
+        strncpy_s(current.asn, asn.c_str(), _TRUNCATE);
+        strncpy_s(current.isp, isp.c_str(), _TRUNCATE);
+    }
 }
 
 void WinMTRNet::RecordSent(int at)
@@ -400,8 +513,15 @@ void WinMTRNet::RecordSent(int at)
     if (at < 0 || at >= MAX_TRACE_HOPS)
         return;
     std::lock_guard<std::mutex> lock(hostMutex);
-    ++host[at].xmit;
-    ++host[at].inFlight;
+    NetHost& current = host[at];
+    if (current.xmit > 0)
+        current.up = false;
+    ++current.xmit;
+    current.transit = true;
+    int knownHighest = highestProbeHop.load();
+    while (at + 1 > knownHighest &&
+        !highestProbeHop.compare_exchange_weak(knownHighest, at + 1)) {
+    }
 }
 
 void WinMTRNet::RecordReply(int at, int roundTripTime)
@@ -410,8 +530,9 @@ void WinMTRNet::RecordReply(int at, int roundTripTime)
         return;
     std::lock_guard<std::mutex> lock(hostMutex);
     NetHost& current = host[at];
-    if (current.inFlight > 0)
-        --current.inFlight;
+    current.transit = false;
+    current.up = true;
+    current.seenAt = GetTickCount64();
     if (current.returned > 0) {
         current.lastJitter = abs(roundTripTime - current.last);
         current.jitterTotal += current.lastJitter;
@@ -428,38 +549,59 @@ void WinMTRNet::RecordReply(int at, int roundTripTime)
 
 void WinMTRNet::RecordTimeout(int at)
 {
-    if (at < 0 || at >= MAX_TRACE_HOPS)
-        return;
-    std::lock_guard<std::mutex> lock(hostMutex);
-    if (host[at].inFlight > 0)
-        --host[at].inFlight;
+    (void) at;
 }
 
 void WinMTRNet::QueueResolve(int at, const sockaddr_storage& address,
     const TraceConfig& config)
 {
-    if (!resolverThread) {
-        SetIdentity(at, AddressToString(address), std::string(),
+    if (resolverThreads.empty() || !resolverSemaphore) {
+        SetIdentity(at, address, AddressToString(address), std::string(),
             std::string(), std::string());
         return;
     }
+    const std::string key = AddressToString(address) +
+        (config.useDns ? "|dns" : "|numeric") +
+        (config.lookupAsn ? "|asn" : "|noasn");
+    ResolvedIdentity cached;
+    bool cacheHit = false;
+    bool queued = false;
     ResolveRequest request = {};
-    request.index = at;
+    request.key = key;
     request.address = address;
     request.config = config;
-    request.generation = traceGeneration.load();
     {
         std::lock_guard<std::mutex> lock(resolverMutex);
-        resolverQueue.push_back(request);
+        const std::map<std::string, ResolvedIdentity>::const_iterator found =
+            resolverCache.find(key);
+        if (found != resolverCache.end()) {
+            cached = found->second;
+            cacheHit = true;
+        } else {
+            ResolveTarget target = {};
+            target.index = at;
+            target.address = address;
+            target.generation = traceGeneration.load();
+            resolverTargets[key].push_back(target);
+            if (resolvingKeys.insert(key).second) {
+                resolverQueue.push_back(request);
+                queued = true;
+            }
+        }
     }
-    SetEvent(resolverEvent);
+    if (cacheHit) {
+        SetIdentity(at, address, cached.name, cached.country,
+            cached.asn, cached.isp);
+    } else if (queued) {
+        ReleaseSemaphore(resolverSemaphore, 1, NULL);
+    }
 }
 
-void WinMTRNet::FinalizeInFlight()
+void WinMTRNet::FinalizeTransit()
 {
     std::lock_guard<std::mutex> lock(hostMutex);
     for (int i = 0; i < MAX_TRACE_HOPS; ++i)
-        host[i].inFlight = 0;
+        host[i].transit = false;
 }
 
 unsigned __stdcall WinMTRNet::ResolverThreadEntry(void* parameter)
@@ -470,7 +612,7 @@ unsigned __stdcall WinMTRNet::ResolverThreadEntry(void* parameter)
 
 void WinMTRNet::ResolverLoop()
 {
-    HANDLE events[2] = { resolverStopEvent, resolverEvent };
+    HANDLE events[2] = { resolverStopEvent, resolverSemaphore };
     for (;;) {
         const DWORD result = WaitForMultipleObjects(2, events, FALSE, INFINITE);
         if (result == WAIT_OBJECT_0)
@@ -478,25 +620,39 @@ void WinMTRNet::ResolverLoop()
         if (result != WAIT_OBJECT_0 + 1)
             continue;
 
-        for (;;) {
-            ResolveRequest request = {};
-            {
-                std::lock_guard<std::mutex> lock(resolverMutex);
-                if (resolverQueue.empty())
-                    break;
-                request = resolverQueue.front();
-                resolverQueue.pop_front();
-            }
+        ResolveRequest request = {};
+        {
+            std::lock_guard<std::mutex> lock(resolverMutex);
+            if (resolverQueue.empty())
+                continue;
+            request = resolverQueue.front();
+            resolverQueue.pop_front();
+        }
 
-            std::string name;
-            AsnNetworkInfo asn;
-            ResolveHopValues(request.address, request.config, name, asn);
-            if (request.generation == traceGeneration.load()) {
-                SetIdentity(request.index, name, asn.countryCode,
-                    asn.asn, asn.isp);
+        ResolvedIdentity identity;
+        AsnNetworkInfo asn;
+        ResolveHopValues(request.address, request.config, identity.name, asn);
+        identity.country = asn.countryCode;
+        identity.asn = asn.asn;
+        identity.isp = asn.isp;
+
+        std::vector<ResolveTarget> targets;
+        {
+            std::lock_guard<std::mutex> lock(resolverMutex);
+            if (resolverCache.size() >= MAX_RESOLVER_CACHE_ENTRIES)
+                resolverCache.erase(resolverCache.begin());
+            resolverCache[request.key] = identity;
+            targets.swap(resolverTargets[request.key]);
+            resolverTargets.erase(request.key);
+            resolvingKeys.erase(request.key);
+        }
+        const uint64_t generation = traceGeneration.load();
+        for (size_t i = 0; i < targets.size(); ++i) {
+            if (targets[i].generation == generation) {
+                SetIdentity(targets[i].index, targets[i].address,
+                    identity.name, identity.country, identity.asn,
+                    identity.isp);
             }
-            if (WaitForSingleObject(resolverStopEvent, 0) == WAIT_OBJECT_0)
-                return;
         }
     }
 }
@@ -533,9 +689,20 @@ HopSnapshot WinMTRNet::GetHopSnapshot(int at) const
     snapshot.country = current.country;
     snapshot.asn = current.asn;
     snapshot.isp = current.isp;
+    snapshot.responders.reserve(current.responderCount);
+    for (int i = 0; i < current.responderCount; ++i) {
+        const Responder& path = current.responders[i];
+        ResponderSnapshot responder;
+        responder.address = AddressToString(path.address);
+        responder.name = path.name;
+        responder.country = path.country;
+        responder.asn = path.asn;
+        responder.isp = path.isp;
+        snapshot.responders.push_back(responder);
+    }
     snapshot.xmit = current.xmit;
     snapshot.returned = current.returned;
-    const int lossBase = current.xmit - current.inFlight;
+    const int lossBase = current.xmit - (current.transit ? 1 : 0);
     snapshot.dropped = lossBase <= 0
         ? 0 : std::max(0, lossBase - current.returned);
     snapshot.lossPercent = lossBase <= 0
@@ -559,7 +726,13 @@ HopSnapshot WinMTRNet::GetHopSnapshot(int at) const
 int WinMTRNet::GetMax() const
 {
     std::lock_guard<std::mutex> lock(hostMutex);
-    return std::min(configuredMaxHops, destinationHop.load());
+    return std::min(configuredMaxHops, highestProbeHop.load());
+}
+
+int WinMTRNet::GetFirstHopIndex() const
+{
+    std::lock_guard<std::mutex> lock(hostMutex);
+    return std::max(0, configuredFirstTtl - 1);
 }
 
 int WinMTRNet::GetAddr(int at) const

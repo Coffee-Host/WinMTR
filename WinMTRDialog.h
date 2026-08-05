@@ -71,6 +71,12 @@ protected:
     DECLARE_MESSAGE_MAP()
 
 private:
+    struct DisplayedHopRow {
+        int start;
+        int end;
+        int responder;
+    };
+
     BOOL InitRegistry();
     int ResolveTraceTarget();
     int DisplayRedraw();
@@ -134,6 +140,11 @@ private:
     int cycles;
     int tos;
     int bitPattern;
+    int firstTtl;
+    int dueTtl;
+    int maxUnknown;
+    int maxDisplayPaths;
+    int cacheSeconds;
     BOOL useDNS;
     BOOL dontFragment;
     BOOL lookupAsn;
@@ -152,7 +163,7 @@ private:
     HICON m_hIcon;
     WinMTRNet* network;
     PublicNetworkInfo* publicNetworkInfo;
-    std::vector<std::pair<int, int> > displayedHopRanges;
+    std::vector<DisplayedHopRow> displayedHopRows;
 };
 
 #endif // WINMTRDIALOG_H_

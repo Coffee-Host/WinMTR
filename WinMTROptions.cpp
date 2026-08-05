@@ -15,7 +15,11 @@ WinMTROptions::WinMTROptions(CWnd* pParent)
       useDNS(DEFAULT_DNS), dontFragment(DEFAULT_DONT_FRAGMENT),
       lookupAsn(DEFAULT_ASN_LOOKUP),
       lookupPublicInfo(WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE),
-      useIPv4(DEFAULT_IPV4), useIPv6(DEFAULT_IPV6)
+      useIPv4(DEFAULT_IPV4), useIPv6(DEFAULT_IPV6),
+      firstTtl(DEFAULT_FIRST_TTL), dueTtl(DEFAULT_DUE_TTL),
+      maxUnknown(DEFAULT_MAX_UNKNOWN),
+      maxDisplayPaths(DEFAULT_MAX_DISPLAY_PATHS),
+      cacheSeconds(DEFAULT_CACHE_SECONDS)
 {
 }
 
@@ -30,6 +34,11 @@ void WinMTROptions::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, IDC_EDIT_CYCLES, m_editCycles);
     DDX_Control(pDX, IDC_EDIT_TOS, m_editTos);
     DDX_Control(pDX, IDC_EDIT_PATTERN, m_editPattern);
+    DDX_Control(pDX, IDC_EDIT_FIRST_TTL, m_editFirstTtl);
+    DDX_Control(pDX, IDC_EDIT_DUE_TTL, m_editDueTtl);
+    DDX_Control(pDX, IDC_EDIT_MAX_UNKNOWN, m_editMaxUnknown);
+    DDX_Control(pDX, IDC_EDIT_MAX_DISPLAY_PATHS, m_editMaxDisplayPaths);
+    DDX_Control(pDX, IDC_EDIT_CACHE_SECONDS, m_editCacheSeconds);
     DDX_Control(pDX, IDC_CHECK_DNS, m_checkDNS);
     DDX_Control(pDX, IDC_CHECK_DF, m_checkDF);
     DDX_Control(pDX, IDC_CHECK_ASN, m_checkAsn);
@@ -52,6 +61,11 @@ BOOL WinMTROptions::OnInitDialog()
     m_editCycles.SetFont(&m_codeFont);
     m_editTos.SetFont(&m_codeFont);
     m_editPattern.SetFont(&m_codeFont);
+    m_editFirstTtl.SetFont(&m_codeFont);
+    m_editDueTtl.SetFont(&m_codeFont);
+    m_editMaxUnknown.SetFont(&m_codeFont);
+    m_editMaxDisplayPaths.SetFont(&m_codeFont);
+    m_editCacheSeconds.SetFont(&m_codeFont);
     PopulateControls();
     m_editInterval.SetFocus();
     return FALSE;
@@ -76,6 +90,16 @@ void WinMTROptions::PopulateControls()
     m_editTos.SetWindowText(text);
     text.Format("%d", bitPattern);
     m_editPattern.SetWindowText(text);
+    text.Format("%d", firstTtl);
+    m_editFirstTtl.SetWindowText(text);
+    text.Format("%d", dueTtl);
+    m_editDueTtl.SetWindowText(text);
+    text.Format("%d", maxUnknown);
+    m_editMaxUnknown.SetWindowText(text);
+    text.Format("%d", maxDisplayPaths);
+    m_editMaxDisplayPaths.SetWindowText(text);
+    text.Format("%d", cacheSeconds);
+    m_editCacheSeconds.SetWindowText(text);
     m_checkDNS.SetCheck(useDNS);
     m_checkDF.SetCheck(dontFragment);
     m_checkAsn.SetCheck(lookupAsn);
@@ -100,6 +124,11 @@ void WinMTROptions::ResetValuesToDefaults()
     lookupPublicInfo = WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE;
     useIPv4 = DEFAULT_IPV4;
     useIPv6 = DEFAULT_IPV6;
+    firstTtl = DEFAULT_FIRST_TTL;
+    dueTtl = DEFAULT_DUE_TTL;
+    maxUnknown = DEFAULT_MAX_UNKNOWN;
+    maxDisplayPaths = DEFAULT_MAX_DISPLAY_PATHS;
+    cacheSeconds = DEFAULT_CACHE_SECONDS;
 }
 
 void WinMTROptions::OnRestoreDefaults()
@@ -129,6 +158,16 @@ void WinMTROptions::OnOK()
     const int newTos = atoi(text);
     m_editPattern.GetWindowText(text);
     const int newPattern = atoi(text);
+    m_editFirstTtl.GetWindowText(text);
+    const int newFirstTtl = atoi(text);
+    m_editDueTtl.GetWindowText(text);
+    const int newDueTtl = atoi(text);
+    m_editMaxUnknown.GetWindowText(text);
+    const int newMaxUnknown = atoi(text);
+    m_editMaxDisplayPaths.GetWindowText(text);
+    const int newMaxDisplayPaths = atoi(text);
+    m_editCacheSeconds.GetWindowText(text);
+    const int newCacheSeconds = atoi(text);
     const BOOL newUseIPv4 = m_checkIPv4.GetCheck();
     const BOOL newUseIPv6 = m_checkIPv6.GetCheck();
 
@@ -139,7 +178,12 @@ void WinMTROptions::OnOK()
         newTimeout < 100 || newTimeout > 10000 ||
         newCycles < 0 || newCycles > 100000 ||
         newTos < 0 || newTos > 255 ||
-        newPattern < -1 || newPattern > 255) {
+        newPattern < -1 || newPattern > 255 ||
+        newFirstTtl < 1 || newFirstTtl > newMaxHops ||
+        newDueTtl < 0 || newDueTtl > newMaxHops ||
+        newMaxUnknown < 1 || newMaxUnknown > 64 ||
+        newMaxDisplayPaths < 1 || newMaxDisplayPaths > 128 ||
+        newCacheSeconds < 0 || newCacheSeconds > 86400) {
         CString error;
         error.LoadString(IDS_ERROR_INVALID_OPTIONS);
         AfxMessageBox(error, MB_ICONWARNING);
@@ -160,6 +204,11 @@ void WinMTROptions::OnOK()
     cycles = newCycles;
     tos = newTos;
     bitPattern = newPattern;
+    firstTtl = newFirstTtl;
+    dueTtl = newDueTtl;
+    maxUnknown = newMaxUnknown;
+    maxDisplayPaths = newMaxDisplayPaths;
+    cacheSeconds = newCacheSeconds;
     useDNS = m_checkDNS.GetCheck();
     dontFragment = m_checkDF.GetCheck();
     lookupAsn = m_checkAsn.GetCheck();

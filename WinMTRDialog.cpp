@@ -194,7 +194,10 @@ WinMTRDialog::WinMTRDialog(CWnd* parent)
       pingSize(DEFAULT_PING_SIZE),
       maxLRU(DEFAULT_MAX_LRU), nrLRU(0), maxHops(DEFAULT_MAX_HOPS),
       timeoutMs(DEFAULT_TIMEOUT_MS), cycles(DEFAULT_CYCLES), tos(DEFAULT_TOS),
-      bitPattern(DEFAULT_BIT_PATTERN), useDNS(DEFAULT_DNS),
+      bitPattern(DEFAULT_BIT_PATTERN), firstTtl(DEFAULT_FIRST_TTL),
+      dueTtl(DEFAULT_DUE_TTL), maxUnknown(DEFAULT_MAX_UNKNOWN),
+      maxDisplayPaths(DEFAULT_MAX_DISPLAY_PATHS),
+      cacheSeconds(DEFAULT_CACHE_SECONDS), useDNS(DEFAULT_DNS),
       dontFragment(DEFAULT_DONT_FRAGMENT), lookupAsn(DEFAULT_ASN_LOOKUP),
       lookupPublicInfo(WINMTR_ENABLE_PUBLIC_IP_LOOKUP_DEFAULT ? TRUE : FALSE),
       useIPv4(DEFAULT_IPV4), useIPv6(DEFAULT_IPV6),
@@ -487,6 +490,17 @@ BOOL WinMTRDialog::InitRegistry()
         else WriteDword(config, "UseIPv4", useIPv4 ? 1 : 0);
         if (ReadDword(config, "UseIPv6", value)) useIPv6 = value ? TRUE : FALSE;
         else WriteDword(config, "UseIPv6", useIPv6 ? 1 : 0);
+        if (ReadDword(config, "FirstTtl", value)) firstTtl = static_cast<int>(value);
+        else WriteDword(config, "FirstTtl", firstTtl);
+        if (ReadDword(config, "DueTtl", value)) dueTtl = static_cast<int>(value);
+        else WriteDword(config, "DueTtl", dueTtl);
+        if (ReadDword(config, "MaxUnknown", value)) maxUnknown = static_cast<int>(value);
+        else WriteDword(config, "MaxUnknown", maxUnknown);
+        if (ReadDword(config, "MaxDisplayPaths", value))
+            maxDisplayPaths = static_cast<int>(value);
+        else WriteDword(config, "MaxDisplayPaths", maxDisplayPaths);
+        if (ReadDword(config, "CacheSeconds", value)) cacheSeconds = static_cast<int>(value);
+        else WriteDword(config, "CacheSeconds", cacheSeconds);
         if (!useIPv4 && !useIPv6) {
             useIPv4 = DEFAULT_IPV4;
             useIPv6 = DEFAULT_IPV6;
@@ -504,6 +518,11 @@ BOOL WinMTRDialog::InitRegistry()
     cycles = std::max(0, std::min(cycles, 100000));
     tos = std::max(0, std::min(tos, 255));
     bitPattern = std::max(-1, std::min(bitPattern, 255));
+    firstTtl = std::max(1, std::min(firstTtl, maxHops));
+    dueTtl = std::max(0, std::min(dueTtl, maxHops));
+    maxUnknown = std::max(1, std::min(maxUnknown, 64));
+    maxDisplayPaths = std::max(1, std::min(maxDisplayPaths, 128));
+    cacheSeconds = std::max(0, std::min(cacheSeconds, 86400));
     HKEY history = NULL;
     if (RegCreateKeyExA(root, "LRU", 0, NULL, REG_OPTION_NON_VOLATILE,
         KEY_READ | KEY_WRITE, NULL, &history, NULL) == ERROR_SUCCESS) {
@@ -550,6 +569,11 @@ void WinMTRDialog::SaveConfiguration()
     WriteDword(key, "LookupPublicInfo", lookupPublicInfo ? 1 : 0);
     WriteDword(key, "UseIPv4", useIPv4 ? 1 : 0);
     WriteDword(key, "UseIPv6", useIPv6 ? 1 : 0);
+    WriteDword(key, "FirstTtl", firstTtl);
+    WriteDword(key, "DueTtl", dueTtl);
+    WriteDword(key, "MaxUnknown", maxUnknown);
+    WriteDword(key, "MaxDisplayPaths", maxDisplayPaths);
+    WriteDword(key, "CacheSeconds", cacheSeconds);
     RegCloseKey(key);
 }
 
@@ -596,6 +620,10 @@ TraceConfig WinMTRDialog::CurrentTraceConfig() const
     config.useDns = useDNS != FALSE;
     config.lookupAsn = lookupAsn != FALSE;
     config.dontFragment = dontFragment != FALSE;
+    config.firstTtl = firstTtl;
+    config.dueTtl = dueTtl;
+    config.maxUnknown = maxUnknown;
+    config.cacheSeconds = cacheSeconds;
     return config;
 }
 
@@ -651,7 +679,7 @@ void WinMTRDialog::OnRestart()
         return;
 
     m_listMTR.DeleteAllItems();
-    displayedHopRanges.clear();
+    displayedHopRows.clear();
     AdjustColumnWidths();
     AdjustWindowToContent();
     if (m_comboHost.FindStringExact(-1, host) == CB_ERR) {
@@ -691,6 +719,11 @@ void WinMTRDialog::OnOptions()
     options.SetLookupPublicInfo(lookupPublicInfo);
     options.SetUseIPv4(useIPv4);
     options.SetUseIPv6(useIPv6);
+    options.SetFirstTtl(firstTtl);
+    options.SetDueTtl(dueTtl);
+    options.SetMaxUnknown(maxUnknown);
+    options.SetMaxDisplayPaths(maxDisplayPaths);
+    options.SetCacheSeconds(cacheSeconds);
     if (options.DoModal() != IDOK)
         return;
 
@@ -708,6 +741,11 @@ void WinMTRDialog::OnOptions()
     lookupPublicInfo = options.GetLookupPublicInfo();
     useIPv4 = options.GetUseIPv4();
     useIPv6 = options.GetUseIPv6();
+    firstTtl = options.GetFirstTtl();
+    dueTtl = options.GetDueTtl();
+    maxUnknown = options.GetMaxUnknown();
+    maxDisplayPaths = options.GetMaxDisplayPaths();
+    cacheSeconds = options.GetCacheSeconds();
     SaveConfiguration();
     if (lookupPublicInfo && !publicInfoQueryStarted)
         StartPublicInfoLookup();
@@ -769,27 +807,56 @@ void WinMTRDialog::Transit(STATES newState)
 int WinMTRDialog::DisplayRedraw()
 {
     const int hops = network->GetMax();
-    std::vector<std::pair<int, int> > ranges;
-    for (int hopIndex = 0; hopIndex < hops; ++hopIndex) {
+    std::vector<DisplayedHopRow> rows;
+    for (int hopIndex = network->GetFirstHopIndex();
+        hopIndex < hops; ++hopIndex) {
         const int start = hopIndex;
-        if (!network->GetHopSnapshot(hopIndex).hasAddress) {
-            while (hopIndex + 1 < hops &&
-                !network->GetHopSnapshot(hopIndex + 1).hasAddress) {
+        const HopSnapshot firstHop = network->GetHopSnapshot(hopIndex);
+        if (!firstHop.hasAddress && firstHop.responders.empty()) {
+            while (hopIndex + 1 < hops) {
+                const HopSnapshot nextHop = network->GetHopSnapshot(hopIndex + 1);
+                if (nextHop.hasAddress || !nextHop.responders.empty())
+                    break;
                 ++hopIndex;
             }
         }
-        ranges.push_back(std::make_pair(start, hopIndex));
+        DisplayedHopRow mainRow = { start, hopIndex, -1 };
+        rows.push_back(mainRow);
+
+        if (start == hopIndex) {
+            const HopSnapshot hop = network->GetHopSnapshot(start);
+            int displayedPaths = hop.hasAddress ? 1 : 0;
+            for (size_t path = 0; path < hop.responders.size() &&
+                displayedPaths < maxDisplayPaths; ++path) {
+                if (hop.hasAddress && hop.responders[path].address == hop.address)
+                    continue;
+                DisplayedHopRow pathRow = {
+                    start, start, static_cast<int>(path)
+                };
+                rows.push_back(pathRow);
+                ++displayedPaths;
+            }
+        }
     }
-    while (m_listMTR.GetItemCount() > static_cast<int>(ranges.size()))
+    while (m_listMTR.GetItemCount() > static_cast<int>(rows.size()))
         m_listMTR.DeleteItem(m_listMTR.GetItemCount() - 1);
 
-    for (size_t rowIndex = 0; rowIndex < ranges.size(); ++rowIndex) {
-        const int start = ranges[rowIndex].first;
-        const int end = ranges[rowIndex].second;
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const int start = rows[rowIndex].start;
+        const int end = rows[rowIndex].end;
         const HopSnapshot hop = network->GetHopSnapshot(start);
-        CString name = hop.name.empty() ? Utf8ToLocal(hop.address) : Utf8ToLocal(hop.name);
+        const bool isResponder = rows[rowIndex].responder >= 0 &&
+            rows[rowIndex].responder < static_cast<int>(hop.responders.size());
+        const ResponderSnapshot* responder = isResponder
+            ? &hop.responders[rows[rowIndex].responder] : NULL;
+        CString name = responder
+            ? Utf8ToLocal(responder->name.empty()
+                ? responder->address : responder->name)
+            : (hop.name.empty() ? Utf8ToLocal(hop.address) : Utf8ToLocal(hop.name));
         if (name.IsEmpty())
             name = LoadText(IDS_NO_RESPONSE);
+        if (responder)
+            name = _T("  + ") + name;
         const int row = static_cast<int>(rowIndex);
         if (m_listMTR.GetItemCount() <= row)
             m_listMTR.InsertItem(row, name);
@@ -797,27 +864,36 @@ int WinMTRDialog::DisplayRedraw()
             m_listMTR.SetItemText(row, 0, name);
 
         CString value;
-        if (end > start)
+        if (responder) {
+            value.Empty();
+        } else if (end > start) {
             value.Format("%d-%d", start + 1, end + 1);
-        else
+        } else {
             value.Format("%d", start + 1);
+        }
         m_listMTR.SetItemText(row, 1, value);
         const int numericValues[9] = {
             hop.lossPercent, hop.xmit, hop.returned, hop.best,
             hop.average, hop.worst, hop.last, hop.jitter, hop.standardDeviation
         };
         for (int column = 2; column <= 10; ++column) {
-            if (column == 2)
+            if (responder) {
+                value.Empty();
+            } else if (column == 2) {
                 value.Format("%d%%", numericValues[column - 2]);
-            else
+            } else {
                 value.Format("%d", numericValues[column - 2]);
+            }
             m_listMTR.SetItemText(row, column, value);
         }
-        m_listMTR.SetItemText(row, 11, Utf8ToLocal(hop.country));
-        m_listMTR.SetItemText(row, 12, Utf8ToLocal(hop.asn));
-        m_listMTR.SetItemText(row, 13, Utf8ToLocal(hop.isp));
+        m_listMTR.SetItemText(row, 11,
+            Utf8ToLocal(responder ? responder->country : hop.country));
+        m_listMTR.SetItemText(row, 12,
+            Utf8ToLocal(responder ? responder->asn : hop.asn));
+        m_listMTR.SetItemText(row, 13,
+            Utf8ToLocal(responder ? responder->isp : hop.isp));
     }
-    displayedHopRanges.swap(ranges);
+    displayedHopRows.swap(rows);
     AdjustColumnWidths();
     AdjustWindowToContent();
     return 0;
@@ -828,26 +904,35 @@ void WinMTRDialog::OnDblclkList(NMHDR*, LRESULT* result)
     POSITION position = m_listMTR.GetFirstSelectedItemPosition();
     if (position) {
         const int item = m_listMTR.GetNextSelectedItem(position);
-        if (item < 0 || item >= static_cast<int>(displayedHopRanges.size())) {
+        if (item < 0 || item >= static_cast<int>(displayedHopRows.size())) {
             *result = 0;
             return;
         }
-        const int start = displayedHopRanges[item].first;
-        const int end = displayedHopRanges[item].second;
+        const int start = displayedHopRows[item].start;
+        const int end = displayedHopRows[item].end;
         const HopSnapshot hop = network->GetHopSnapshot(start);
+        const int path = displayedHopRows[item].responder;
+        const ResponderSnapshot* responder = path >= 0 &&
+            path < static_cast<int>(hop.responders.size())
+            ? &hop.responders[path] : NULL;
+        const std::string address = responder ? responder->address : hop.address;
+        const std::string name = responder ? responder->name : hop.name;
+        const std::string country = responder ? responder->country : hop.country;
+        const std::string asn = responder ? responder->asn : hop.asn;
+        const std::string isp = responder ? responder->isp : hop.isp;
         WinMTRProperties properties(this);
         strncpy_s(properties.host,
-            hop.name.empty() ? hop.address.c_str() : hop.name.c_str(), _TRUNCATE);
-        strncpy_s(properties.ip, hop.address.c_str(), _TRUNCATE);
+            name.empty() ? address.c_str() : name.c_str(), _TRUNCATE);
+        strncpy_s(properties.ip, address.c_str(), _TRUNCATE);
         std::string comment;
-        if (!hop.country.empty()) comment += hop.country;
-        if (!hop.asn.empty()) comment += "  AS" + hop.asn;
-        if (!hop.isp.empty()) comment += "  " + hop.isp;
+        if (!country.empty()) comment += country;
+        if (!asn.empty()) comment += "  AS" + asn;
+        if (!isp.empty()) comment += "  " + isp;
         if (end > start) {
             CString range;
             range.Format(LoadText(IDS_NO_RESPONSE_RANGE), start + 1, end + 1);
             comment = CStringToUtf8(range);
-        } else if (comment.empty() && !hop.hasAddress) {
+        } else if (comment.empty() && address.empty()) {
             comment = CStringToUtf8(LoadText(IDS_NO_RESPONSE));
         }
         strncpy_s(properties.comment, comment.c_str(), _TRUNCATE);
@@ -867,7 +952,7 @@ void WinMTRDialog::OnResetStats()
 {
     network->ResetHops();
     m_listMTR.DeleteAllItems();
-    displayedHopRanges.clear();
+    displayedHopRows.clear();
     AdjustColumnWidths();
     AdjustWindowToContent();
 }
@@ -930,7 +1015,7 @@ std::string WinMTRDialog::BuildTextReport() const
     }
     output << "\r\n";
     const int hops = network->GetMax();
-    for (int i = 0; i < hops; ++i) {
+    for (int i = network->GetFirstHopIndex(); i < hops; ++i) {
         const HopSnapshot hop = network->GetHopSnapshot(i);
         const std::string name = hop.name.empty()
             ? (hop.address.empty() ? CStringToUtf8(LoadText(IDS_NO_RESPONSE)) : hop.address)
@@ -940,6 +1025,17 @@ std::string WinMTRDialog::BuildTextReport() const
                << hop.average << '\t' << hop.worst << '\t' << hop.last << '\t'
                << hop.jitter << '\t' << hop.standardDeviation << '\t'
                << hop.country << '\t' << hop.asn << '\t' << hop.isp << "\r\n";
+        for (size_t path = 0; path < hop.responders.size(); ++path) {
+            const ResponderSnapshot& responder = hop.responders[path];
+            if (hop.hasAddress && responder.address == hop.address)
+                continue;
+            output << "  + " << (responder.name.empty()
+                ? responder.address : responder.name) << '\t' << i + 1;
+            for (int column = 2; column <= 11; ++column)
+                output << '\t';
+            output << responder.country << '\t' << responder.asn << '\t'
+                << responder.isp << "\r\n";
+        }
     }
     return output.str();
 }
@@ -957,7 +1053,7 @@ std::string WinMTRDialog::BuildHtmlReport() const
         output << "<th>" << HtmlEscape(CStringToUtf8(LoadText(MTR_COL_RESOURCE_IDS[i]))) << "</th>";
     output << "</tr></thead><tbody>";
     const int hops = network->GetMax();
-    for (int i = 0; i < hops; ++i) {
+    for (int i = network->GetFirstHopIndex(); i < hops; ++i) {
         const HopSnapshot hop = network->GetHopSnapshot(i);
         const std::string name = hop.name.empty()
             ? (hop.address.empty() ? CStringToUtf8(LoadText(IDS_NO_RESPONSE)) : hop.address)
@@ -970,6 +1066,19 @@ std::string WinMTRDialog::BuildHtmlReport() const
                << "</td><td>" << hop.standardDeviation << "</td><td>"
                << HtmlEscape(hop.country) << "</td><td>" << HtmlEscape(hop.asn)
                << "</td><td>" << HtmlEscape(hop.isp) << "</td></tr>";
+        for (size_t path = 0; path < hop.responders.size(); ++path) {
+            const ResponderSnapshot& responder = hop.responders[path];
+            if (hop.hasAddress && responder.address == hop.address)
+                continue;
+            output << "<tr><td>  + " << HtmlEscape(responder.name.empty()
+                ? responder.address : responder.name) << "</td><td>" << i + 1
+                << "</td>";
+            for (int column = 2; column <= 10; ++column)
+                output << "<td></td>";
+            output << "<td>" << HtmlEscape(responder.country) << "</td><td>"
+                << HtmlEscape(responder.asn) << "</td><td>"
+                << HtmlEscape(responder.isp) << "</td></tr>";
+        }
     }
     output << "</tbody></table></body></html>";
     return output.str();
@@ -984,7 +1093,7 @@ std::string WinMTRDialog::BuildCsvReport() const
     }
     output << "\r\n";
     const int hops = network->GetMax();
-    for (int i = 0; i < hops; ++i) {
+    for (int i = network->GetFirstHopIndex(); i < hops; ++i) {
         const HopSnapshot hop = network->GetHopSnapshot(i);
         const std::string name = hop.name.empty() ? hop.address : hop.name;
         output << CsvEscape(name) << ',' << i + 1 << ',' << hop.lossPercent << ','
@@ -993,6 +1102,18 @@ std::string WinMTRDialog::BuildCsvReport() const
                << hop.jitter << ',' << hop.standardDeviation << ','
                << CsvEscape(hop.country) << ',' << CsvEscape(hop.asn) << ','
                << CsvEscape(hop.isp) << "\r\n";
+        for (size_t path = 0; path < hop.responders.size(); ++path) {
+            const ResponderSnapshot& responder = hop.responders[path];
+            if (hop.hasAddress && responder.address == hop.address)
+                continue;
+            output << CsvEscape("  + " + (responder.name.empty()
+                ? responder.address : responder.name)) << ',' << i + 1;
+            for (int column = 2; column <= 11; ++column)
+                output << ',';
+            output << CsvEscape(responder.country) << ','
+                << CsvEscape(responder.asn) << ','
+                << CsvEscape(responder.isp) << "\r\n";
+        }
     }
     return output.str();
 }
@@ -1005,9 +1126,11 @@ std::string WinMTRDialog::BuildJsonReport() const
     m_comboHost.GetWindowText(target);
     output << JsonEscape(CStringToUtf8(target)) << "\",\n  \"hops\": [\n";
     const int hops = network->GetMax();
-    for (int i = 0; i < hops; ++i) {
+    bool firstHop = true;
+    for (int i = network->GetFirstHopIndex(); i < hops; ++i) {
         const HopSnapshot hop = network->GetHopSnapshot(i);
-        if (i) output << ",\n";
+        if (!firstHop) output << ",\n";
+        firstHop = false;
         output << "    {\"hop\":" << i + 1
                << ",\"host\":\"" << JsonEscape(hop.name)
                << "\",\"ip\":\"" << JsonEscape(hop.address)
@@ -1018,7 +1141,19 @@ std::string WinMTRDialog::BuildJsonReport() const
                << ",\"jitter_ms\":" << hop.jitter << ",\"stddev_ms\":" << hop.standardDeviation
                << ",\"country\":\"" << JsonEscape(hop.country)
                << "\",\"asn\":\"" << JsonEscape(hop.asn)
-               << "\",\"isp\":\"" << JsonEscape(hop.isp) << "\"}";
+               << "\",\"isp\":\"" << JsonEscape(hop.isp)
+               << "\",\"responders\":[";
+        for (size_t path = 0; path < hop.responders.size(); ++path) {
+            const ResponderSnapshot& responder = hop.responders[path];
+            if (path) output << ',';
+            output << "{\"host\":\"" << JsonEscape(responder.name)
+                << "\",\"ip\":\"" << JsonEscape(responder.address)
+                << "\",\"country\":\"" << JsonEscape(responder.country)
+                << "\",\"asn\":\"" << JsonEscape(responder.asn)
+                << "\",\"isp\":\"" << JsonEscape(responder.isp)
+                << "\"}";
+        }
+        output << "]}";
     }
     output << "\n  ]\n}\n";
     return output.str();
@@ -1062,7 +1197,8 @@ void WinMTRDialog::SaveReport(const std::string& text, LPCTSTR extension,
 
 bool WinMTRDialog::ConfirmShareReady() const
 {
-    if (network->GetHopSnapshot(0).xmit >= RECOMMENDED_SHARE_PACKETS)
+    if (network->GetHopSnapshot(network->GetFirstHopIndex()).xmit >=
+        RECOMMENDED_SHARE_PACKETS)
         return true;
     CString message;
     message.Format(LoadText(IDS_WARNING_SHARE_INCOMPLETE),
@@ -1283,9 +1419,9 @@ void WinMTRDialog::AdjustWindowToContent()
         contentWidth = std::max(contentWidth, summaryWidth);
     }
 
+    int rowHeight = 18;
     int requiredListHeight = 0;
     if (hasRows) {
-        int rowHeight = 18;
         CRect row;
         if (m_listMTR.GetItemRect(0, row, LVIR_BOUNDS))
             rowHeight = std::max(rowHeight, static_cast<int>(row.Height()));
@@ -1353,23 +1489,51 @@ void WinMTRDialog::AdjustWindowToContent()
         std::min(static_cast<int>(current.top),
             static_cast<int>(monitor.rcWork.bottom) - desiredHeight));
 
-    if (current.Width() != desiredWidth || current.Height() != desiredHeight ||
-        current.left != left || current.top != top) {
+    const auto applyWindowLayout = [this](int layoutLeft, int layoutTop,
+        int layoutWidth, int layoutHeight) {
         adjustingWindow = true;
-        SetWindowPos(NULL, left, top, desiredWidth, desiredHeight,
+        SetWindowPos(NULL, layoutLeft, layoutTop, layoutWidth, layoutHeight,
             SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOZORDER);
         adjustingWindow = false;
 
-        // A second layout after the outer resize prevents child controls from
-        // retaining an intermediate position or copied resize artifacts.
+        // Explicitly lay out the children after the outer resize. This also
+        // lets the list view update its actual page size before it is measured.
         CRect resizedClient;
         GetClientRect(resizedClient);
         SendMessage(WM_SIZE, SIZE_RESTORED,
             MAKELPARAM(resizedClient.Width(), resizedClient.Height()));
         RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_ERASE |
             RDW_ALLCHILDREN | RDW_UPDATENOW);
+    };
+
+    if (current.Width() != desiredWidth || current.Height() != desiredHeight ||
+        current.left != left || current.top != top) {
+        applyWindowLayout(left, top, desiredWidth, desiredHeight);
     }
     StretchLastColumnToFill();
+
+    // The list view's header, border and scrollbars can differ by a few pixels
+    // between Windows themes and DPI settings. Measure the real page after the
+    // layout and grow by the missing rows instead of relying on estimates only.
+    for (int pass = 0; hasRows && pass < 2; ++pass) {
+        const int visibleRows = m_listMTR.GetCountPerPage();
+        if (visibleRows >= itemCount)
+            break;
+
+        CRect fitted;
+        GetWindowRect(fitted);
+        const int missingRows = itemCount - visibleRows;
+        const int fittedHeight = std::min(workHeight,
+            static_cast<int>(fitted.Height()) + missingRows * rowHeight + 2);
+        if (fittedHeight <= fitted.Height())
+            break;
+
+        const int fittedTop = std::max(static_cast<int>(monitor.rcWork.top),
+            std::min(static_cast<int>(fitted.top),
+                static_cast<int>(monitor.rcWork.bottom) - fittedHeight));
+        applyWindowLayout(fitted.left, fittedTop, fitted.Width(), fittedHeight);
+        StretchLastColumnToFill();
+    }
 }
 
 void WinMTRDialog::StretchLastColumnToFill()

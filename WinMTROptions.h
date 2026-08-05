@@ -20,6 +20,11 @@ public:
     void SetLookupPublicInfo(BOOL value) { lookupPublicInfo = value; }
     void SetUseIPv4(BOOL value) { useIPv4 = value; }
     void SetUseIPv6(BOOL value) { useIPv6 = value; }
+    void SetFirstTtl(int value) { firstTtl = value; }
+    void SetDueTtl(int value) { dueTtl = value; }
+    void SetMaxUnknown(int value) { maxUnknown = value; }
+    void SetMaxDisplayPaths(int value) { maxDisplayPaths = value; }
+    void SetCacheSeconds(int value) { cacheSeconds = value; }
 
     BOOL GetUseDNS() const { return useDNS; }
     double GetInterval() const { return interval; }
@@ -35,6 +40,11 @@ public:
     BOOL GetLookupPublicInfo() const { return lookupPublicInfo; }
     BOOL GetUseIPv4() const { return useIPv4; }
     BOOL GetUseIPv6() const { return useIPv6; }
+    int GetFirstTtl() const { return firstTtl; }
+    int GetDueTtl() const { return dueTtl; }
+    int GetMaxUnknown() const { return maxUnknown; }
+    int GetMaxDisplayPaths() const { return maxDisplayPaths; }
+    int GetCacheSeconds() const { return cacheSeconds; }
 
     enum { IDD = IDD_DIALOG_OPTIONS };
 
@@ -58,6 +68,11 @@ private:
     CEdit m_editCycles;
     CEdit m_editTos;
     CEdit m_editPattern;
+    CEdit m_editFirstTtl;
+    CEdit m_editDueTtl;
+    CEdit m_editMaxUnknown;
+    CEdit m_editMaxDisplayPaths;
+    CEdit m_editCacheSeconds;
     CButton m_checkDNS;
     CButton m_checkDF;
     CButton m_checkAsn;
@@ -80,6 +95,11 @@ private:
     BOOL lookupPublicInfo;
     BOOL useIPv4;
     BOOL useIPv6;
+    int firstTtl;
+    int dueTtl;
+    int maxUnknown;
+    int maxDisplayPaths;
+    int cacheSeconds;
 };
 
 #endif // WINMTROPTIONS_H_

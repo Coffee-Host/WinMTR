@@ -59,6 +59,11 @@
 #define DEFAULT_ASN_LOOKUP      TRUE
 #define DEFAULT_IPV4            TRUE
 #define DEFAULT_IPV6            TRUE
+#define DEFAULT_FIRST_TTL        1
+#define DEFAULT_DUE_TTL          0
+#define DEFAULT_MAX_UNKNOWN      5
+#define DEFAULT_MAX_DISPLAY_PATHS 8
+#define DEFAULT_CACHE_SECONDS    0
 #define RECOMMENDED_SHARE_PACKETS 100
 
 #define SAVED_PINGS 100

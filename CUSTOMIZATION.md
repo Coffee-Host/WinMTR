@@ -50,7 +50,7 @@ ipinfo 端點必須回傳含 `ip`、`hostname`、`city`、`region`、`country`�
 
 [`WinMTRGlobal.h`](WinMTRGlobal.h) 包含探測預設值、允許範圍相關常數、表格欄數與每欄寬度：
 
-- `DEFAULT_*`：封包大小、間隔、最大跳數、逾時、循環次數、TOS、資料樣式、DF、ASN 查詢與 IPv4／IPv6 位址家族。
+- `DEFAULT_*`：封包大小、間隔、起始／至少／最大 TTL、未知主機與 ECMP 顯示上限、回覆快取、逾時、循環次數、TOS、資料樣式、DF、ASN 查詢與 IPv4／IPv6 位址家族。
 - `RECOMMENDED_SHARE_PACKETS`：截圖、複製或匯出前建議第一跳至少送出的封包數。
 - `MTR_COL_RESOURCE_IDS`：表格欄位及順序；欄位文字仍在 `WinMTR.rc`。
 - `MTR_COL_LENGTH`：各欄建立時的備援寬度；顯示後會依標題及內容自動調整。
