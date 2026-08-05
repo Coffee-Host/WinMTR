@@ -460,21 +460,26 @@ bool WinMTRNet::ShouldEndBatch(int at, const TraceConfig& config,
     if (at < first)
         return false;
     std::lock_guard<std::mutex> lock(hostMutex);
-    int unknown = 0;
+    int consecutiveUnknown = 0;
     for (int index = first; index < at; ++index) {
         if (!host[index].hasAddress) {
-            ++unknown;
-        } else if (SameAddress(host[index].address, remoteAddress) &&
-            config.dueTtl <= index + 1) {
-            batchHostCount = index - first + 1;
-            return true;
+            ++consecutiveUnknown;
+        } else {
+            consecutiveUnknown = 0;
+            if (SameAddress(host[index].address, remoteAddress) &&
+                config.dueTtl <= index + 1) {
+                batchHostCount = index - first + 1;
+                return true;
+            }
         }
     }
     const bool reachedDestination = host[at].hasAddress &&
         SameAddress(host[at].address, remoteAddress) &&
         config.dueTtl <= at + 1;
+    const bool currentUnknown = !host[at].hasAddress;
     if (reachedDestination ||
-        (unknown > config.maxUnknown && config.dueTtl <= at + 1) ||
+        (currentUnknown && consecutiveUnknown > config.maxUnknown &&
+            config.dueTtl <= at + 1) ||
         at >= config.maxHops - 1) {
         batchHostCount = at - first + 1;
         return true;
